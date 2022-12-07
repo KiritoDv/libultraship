@@ -14,6 +14,10 @@ struct GfxWindowManagerAPI;
 
 namespace Ship {
 class ResourceMgr;
+class Texture;
+
+Texture* ResourceMgr_LoadTextureByCRC(uint64_t crc);
+Texture* ResourceMgr_LoadTextureByName(char* texName);
 
 class Window {
   public:

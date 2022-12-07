@@ -11,6 +11,10 @@ Texture* TextureFactory::ReadTexture(BinaryReader* reader) {
             TextureV0 texFac = TextureV0();
             texFac.ParseFileBinary(reader, tex);
         } break;
+        case Version::Flynn: {
+            TextureV1 texFac = TextureV1();
+            texFac.ParseFileBinary(reader, tex);
+        } break;
         default:
             // VERSION NOT SUPPORTED
             break;

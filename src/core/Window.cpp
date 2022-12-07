@@ -140,9 +140,10 @@ char* ResourceMgr_LoadTexByCRC(uint64_t crc) {
     const std::string* hashStr = Ship::Window::GetInstance()->GetResourceManager()->HashToString(crc);
 
     if (hashStr != nullptr) {
-        const auto res = LOAD_TEX(hashStr->c_str());
-        Ship::ExecuteHooks<Ship::LoadTexture>(hashStr->c_str(), &res->imageData);
 
+        if (std::string(*hashStr).find("gLinkAdultEyesOpenTex") != std::string::npos)
+            printf("Found");
+        const auto res = LOAD_TEX(hashStr->c_str());
         return reinterpret_cast<char*>(res->imageData);
     } else {
         return nullptr;
@@ -167,7 +168,6 @@ void ResourceMgr_RegisterResourcePatch(uint64_t hash, uint32_t instrIndex, uintp
 
 char* ResourceMgr_LoadTexByName(char* texPath) {
     const auto res = LOAD_TEX(texPath);
-    Ship::ExecuteHooks<Ship::LoadTexture>(texPath, &res->imageData);
     return (char*)res->imageData;
 }
 
@@ -231,6 +231,15 @@ uint32_t osGetCount(void) {
 }
 
 namespace Ship {
+
+Texture* ResourceMgr_LoadTextureByCRC(uint64_t crc) {
+    const std::string* hashStr = Ship::Window::GetInstance()->GetResourceManager()->HashToString(crc);
+    return LOAD_TEX(hashStr->c_str());
+}
+
+Texture* ResourceMgr_LoadTextureByName(char* texName) {
+    return LOAD_TEX(texName);
+}
 
 std::weak_ptr<Window> Window::mContext;
 
@@ -336,7 +345,7 @@ std::string Window::GetAppDirectoryPath() {
 }
 
 std::string Window::GetPathRelativeToAppDirectory(const char* path) {
-    return GetAppDirectoryPath() + "/" + path;
+    return GetAppDirectoryPath() + "\\" + path;
 }
 
 void Window::StartFrame() {
