@@ -606,11 +606,12 @@ static uint8_t* apply_tlut_data(int tile, uint8_t* data, uint16_t width, uint16_
     uint8_t* out = new uint8_t[width * height * 4];
 
     if (size == 8) {
-        for (int o = 0; o < width * height; o++) {
-            uint8_t idx = data[o];
+        uint32_t pal_idx = rdp.texture_tile[tile].palette;
+        const uint8_t* palette = rdp.palettes[pal_idx / 8] + (pal_idx % 8) * 16 * 2;
 
-            uint16_t col16 = (rdp.palettes[idx / 128][(idx % 128) * 2] << 8) |
-                             rdp.palettes[idx / 128][(idx % 128) * 2 + 1]; // Big endian load
+        for (int o = 0; o < width * height; o++) {
+            int idx = data[o];
+            uint16_t col16 = (palette[idx * 2] << 8) | palette[idx * 2 + 1];
             uint8_t a = col16 & 1;
             uint8_t r = col16 >> 11;
             uint8_t g = (col16 >> 6) & 0x1f;
@@ -626,8 +627,8 @@ static uint8_t* apply_tlut_data(int tile, uint8_t* data, uint16_t width, uint16_
         const uint8_t* palette = rdp.palettes[pal_idx / 8] + (pal_idx % 8) * 16 * 2;
 
         for (int o = 0; o < width * height; o++) {
-            uint8_t idx = data[o];
-            uint16_t col16 = (palette[idx * 2] << 8) | palette[idx * 2 + 1]; // Big endian load
+            uint8_t idx = (data[o] >> (4 - (o % 2) * 4)) & 0xf;
+            uint16_t col16 = (palette[idx * 2] << 8) | palette[idx * 2 + 1];
             uint8_t a = col16 & 1;
             uint8_t r = col16 >> 11;
             uint8_t g = (col16 >> 6) & 0x1f;
@@ -638,6 +639,7 @@ static uint8_t* apply_tlut_data(int tile, uint8_t* data, uint16_t width, uint16_
             out[4 * o + 3] = a ? 255 : 0;
         }
     }
+    return nullptr;
 }
 
 static void import_texture_raw(int tile) {
@@ -649,7 +651,7 @@ static void import_texture_raw(int tile) {
 
     switch (type){
         case (uint8_t) Ship::TextureType::Palette4bpp:
-            apply_tlut_data(tile, (uint8_t*)addr, width, height, 4);
+            addr = apply_tlut_data(tile, (uint8_t*)addr, width, height, 4);
             break;
         case (uint8_t) Ship::TextureType::Palette8bpp:
             addr = apply_tlut_data(tile, (uint8_t*)addr, width, height, 8);
