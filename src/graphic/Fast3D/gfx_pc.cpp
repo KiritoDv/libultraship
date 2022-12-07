@@ -621,6 +621,22 @@ static uint8_t* apply_tlut_data(int tile, uint8_t* data, uint16_t width, uint16_
             out[4 * o + 3] = a ? 255 : 0;
         }
         return out;
+    } else {
+        uint32_t pal_idx = rdp.texture_tile[tile].palette;
+        const uint8_t* palette = rdp.palettes[pal_idx / 8] + (pal_idx % 8) * 16 * 2;
+
+        for (int o = 0; o < width * height; o++) {
+            uint8_t idx = data[o];
+            uint16_t col16 = (palette[idx * 2] << 8) | palette[idx * 2 + 1]; // Big endian load
+            uint8_t a = col16 & 1;
+            uint8_t r = col16 >> 11;
+            uint8_t g = (col16 >> 6) & 0x1f;
+            uint8_t b = (col16 >> 1) & 0x1f;
+            out[4 * o + 0] = SCALE_5_8(r);
+            out[4 * o + 1] = SCALE_5_8(g);
+            out[4 * o + 2] = SCALE_5_8(b);
+            out[4 * o + 3] = a ? 255 : 0;
+        }
     }
 }
 
