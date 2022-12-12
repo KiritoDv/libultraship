@@ -651,8 +651,8 @@ static void import_texture_raw(int tile) {
 
     switch (type){
         case (uint8_t) Ship::TextureType::Palette4bpp:
-            addr = apply_tlut_data(tile, (uint8_t*)addr, width, height, 4);
-            break;
+            // addr = apply_tlut_data(tile, (uint8_t*)addr, width, height, 4);
+            return;
         case (uint8_t) Ship::TextureType::Palette8bpp:
             addr = apply_tlut_data(tile, (uint8_t*)addr, width, height, 8);
             break;
@@ -2532,10 +2532,10 @@ static void gfx_run_dl(Gfx* cmd) {
                     if (ResourceMgr_OTRSigCheck(imgData) == 1) {
                         Ship::Texture* tex = Ship::ResourceMgr_LoadTextureByName(imgData);
                         i = (uintptr_t)reinterpret_cast<char*>(tex->imageData);
-                        rdp.texture_to_load.is_hd_texture = tex->hasBiggerTMEM;
                         rdp.texture_to_load.image_info.width = tex->width;
                         rdp.texture_to_load.image_info.height = tex->height;
                         rdp.texture_to_load.image_info.type = (int)tex->texType;
+                        rdp.texture_to_load.is_hd_texture = tex->hasMetadata && tex->metadata.useBiggerTMEM;
                     }
                 }
 
@@ -2561,11 +2561,11 @@ static void gfx_run_dl(Gfx* cmd) {
 
                     Ship::Texture* texture = Ship::ResourceMgr_LoadTextureByCRC(hash);
 
-                    if (texture != nullptr) {
-                        rdp.texture_to_load.is_hd_texture = texture->hasBiggerTMEM;
+                    if (texture != nullptr) {;
                         rdp.texture_to_load.image_info.width = texture->width;
                         rdp.texture_to_load.image_info.height = texture->height;
                         rdp.texture_to_load.image_info.type = (int) texture->texType;
+                        rdp.texture_to_load.is_hd_texture = texture->hasMetadata && texture->metadata.useBiggerTMEM;
                         tex = reinterpret_cast<char*>(texture->imageData);
                         cmd--;
                         uintptr_t oldData = cmd->words.w1;

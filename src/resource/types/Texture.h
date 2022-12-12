@@ -16,6 +16,12 @@ enum class TextureType {
     GrayscaleAlpha16bpp = 9,
 };
 
+struct TextureMetadata {
+    uint32_t width, height;
+    uint32_t texDataSize;
+    bool useBiggerTMEM;
+};
+
 class TextureV0 : public ResourceFile {
   public:
     TextureType texType;
@@ -40,9 +46,11 @@ class Texture : public Resource {
   public:
     TextureType texType;
     uint16_t width, height;
-    uint8_t  hasBiggerTMEM = false;
     uint32_t imageDataSize;
+    uint8_t  hasMetadata;
+    TextureMetadata metadata;
     uint8_t* imageData;
     uint8_t* paletteData;
+
 };
 } // namespace Ship

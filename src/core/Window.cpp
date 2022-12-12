@@ -150,6 +150,29 @@ char* ResourceMgr_LoadTexByCRC(uint64_t crc) {
     }
 }
 
+char* ResourceMgr_LoadOffsetByName(char* texPath, uint32_t offset, uint32_t width, uint32_t height) {
+    const auto res = LOAD_TEX(texPath);
+    if(res->hasMetadata){
+
+        float scale = (float) res->width / res->metadata.width;
+
+        int x1 = (offset % res->metadata.width) * scale;
+        int y1 = (offset / res->metadata.width) * scale;
+        int x2 = (x1 + width) * scale;
+        int y2 = (y1 + height) * scale;
+        size_t size = (x2 - x1) * (y2 - y1) * 4;
+        size_t oset = (y1 * res->width + x1) * 4;
+
+        char* data = new char[size + 4];
+        memcpy(data, "OSET", 4);
+        memcpy(data + 4, res->imageData + oset, size);
+
+        return data;
+    }
+
+    return reinterpret_cast<char*>(res->imageData + offset);
+}
+
 void ResourceMgr_RegisterResourcePatch(uint64_t hash, uint32_t instrIndex, uintptr_t origData) {
     const std::string* hashStr = Ship::Window::GetInstance()->GetResourceManager()->HashToString(hash);
 
