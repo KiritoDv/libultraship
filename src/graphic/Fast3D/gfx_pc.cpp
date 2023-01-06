@@ -2535,7 +2535,7 @@ static void gfx_run_dl(Gfx* cmd) {
                         rdp.texture_to_load.image_info.width = tex->width;
                         rdp.texture_to_load.image_info.height = tex->height;
                         rdp.texture_to_load.image_info.type = (int)tex->texType;
-                        rdp.texture_to_load.is_hd_texture = tex->hasMetadata && tex->metadata.useBiggerTMEM;
+                        rdp.texture_to_load.is_hd_texture = tex->differentSizeThanOriginal;
                     }
                 }
 
@@ -2565,7 +2565,7 @@ static void gfx_run_dl(Gfx* cmd) {
                         rdp.texture_to_load.image_info.width = texture->width;
                         rdp.texture_to_load.image_info.height = texture->height;
                         rdp.texture_to_load.image_info.type = (int) texture->texType;
-                        rdp.texture_to_load.is_hd_texture = texture->hasMetadata && texture->metadata.useBiggerTMEM;
+                        rdp.texture_to_load.is_hd_texture = texture->differentSizeThanOriginal;
                         tex = reinterpret_cast<char*>(texture->imageData);
                         cmd--;
                         uintptr_t oldData = cmd->words.w1;

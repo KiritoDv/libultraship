@@ -26,13 +26,7 @@ void TextureV1::ParseFileBinary(BinaryReader* reader, Resource* res) {
     tex->texType = (TextureType)reader->ReadUInt32();
     tex->width = reader->ReadUInt32();
     tex->height = reader->ReadUInt32();
-    tex->hasMetadata = reader->ReadInt8();
-    if(tex->hasMetadata){
-        TextureMetadata* metadata = &tex->metadata;
-        metadata->width = reader->ReadUInt32();
-        metadata->height = reader->ReadUInt32();
-        metadata->useBiggerTMEM = reader->ReadInt8();
-    }
+    tex->differentSizeThanOriginal = reader->ReadInt8();
     uint32_t dataSize = reader->ReadUInt32();
 
     tex->imageDataSize = dataSize;
