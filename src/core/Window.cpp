@@ -199,7 +199,7 @@ Ship::Texture* ResourceMgr_LoadTexByName(char* texPath) {
         Ship::Texture* dummy = new Ship::Texture;
         dummy->texType = Ship::TextureType::RGBA32bpp;
         dummy->texFlags = (1 << 0);
-        dummy->imageData = new uint8_t[]{ 0, 0, 0, 0 };
+        dummy->imageData = new uint8_t[4]{ 0, 0, 0, 0 };
         dummy->width = 1;
         dummy->height = 1;
         return dummy;
