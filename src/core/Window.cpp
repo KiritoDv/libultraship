@@ -189,7 +189,6 @@ uint8_t* ResourceMgr_LoadTexModifier(const char* texPath){
 
 void ResourceMgr_RemoveTexModifier(const char* texPath){
     if(mTextureModifiers.contains(texPath)){
-        free(mTextureModifiers[texPath]);
         mTextureModifiers.erase(texPath);
     }
 }

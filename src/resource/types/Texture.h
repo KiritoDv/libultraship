@@ -43,6 +43,7 @@ class Texture : public Resource {
     TextureType texType;
     uint16_t width, height;
     uint32_t imageDataSize;
+    uint16_t oWidth, oHeight;
     uint32_t texFlags = 0;
     uint8_t* imageData;
     uint8_t* paletteData;
