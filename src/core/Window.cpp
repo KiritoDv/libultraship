@@ -46,7 +46,6 @@
 extern "C" {
 struct OSMesgQueue;
 
-std::unordered_map<std::string, uint8_t*> mTextureModifiers;
 uint8_t __osMaxControllers = MAXCONTROLLERS;
 
 int32_t osContInit(OSMesgQueue* mq, uint8_t* controllerBits, OSContStatus* status) {
@@ -166,30 +165,6 @@ void ResourceMgr_RegisterResourcePatch(uint64_t hash, uint32_t instrIndex, uintp
         patch.OrigData = origData;
 
         res->Patches.push_back(patch);
-    }
-}
-
-bool ResourceMgr_HasTexModifier(const char* texPath){
-    return mTextureModifiers.contains(texPath);
-}
-
-void ResourceMgr_RegisterTexModifier(char* texPath, uint8_t* modifier) {
-    if(mTextureModifiers.contains(texPath)) {
-        free(mTextureModifiers[texPath]);
-    }
-    mTextureModifiers[texPath] = modifier;
-}
-
-uint8_t* ResourceMgr_LoadTexModifier(const char* texPath){
-    if(mTextureModifiers.contains(texPath)){
-        return mTextureModifiers[texPath];
-    }
-    return nullptr;
-}
-
-void ResourceMgr_RemoveTexModifier(const char* texPath){
-    if(mTextureModifiers.contains(texPath)){
-        mTextureModifiers.erase(texPath);
     }
 }
 

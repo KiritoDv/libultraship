@@ -29,8 +29,6 @@ void TextureV1::ParseFileBinary(BinaryReader* reader, Resource* res) {
     tex->width = reader->ReadUInt32();
     tex->height = reader->ReadUInt32();
     tex->texFlags = reader->ReadUInt32();
-    tex->oWidth = reader->ReadUInt32();
-    tex->oHeight = reader->ReadUInt32();
     uint32_t dataSize = reader->ReadUInt32();
 
     tex->imageDataSize = dataSize;
