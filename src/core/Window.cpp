@@ -168,6 +168,7 @@ std::string Window::GetPathRelativeToAppDirectory(const char* path) {
 
 void Window::StartFrame() {
     gfx_start_frame();
+    ExecuteHooks<WindowStartFrame>();
 }
 
 void Window::SetTargetFps(int32_t fps) {

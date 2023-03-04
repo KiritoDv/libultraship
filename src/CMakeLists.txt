@@ -98,7 +98,7 @@ set(Source_Files__Core__Libultra
     ${CMAKE_CURRENT_SOURCE_DIR}/core/libultra/os.h
     ${CMAKE_CURRENT_SOURCE_DIR}/core/libultra/os.cpp
 )
- 
+
 source_group("Core\\libultra" FILES ${Source_Files__Core__Libultra})
 
 set(Source_Files__Core__Bridge
@@ -117,7 +117,7 @@ set(Source_Files__Core__Bridge
     ${CMAKE_CURRENT_SOURCE_DIR}/core/bridge/speechsynthesizerbridge.h
     ${CMAKE_CURRENT_SOURCE_DIR}/core/bridge/speechsynthesizerbridge.cpp
 )
- 
+
 source_group("Core\\Bridge" FILES ${Source_Files__Core__Bridge})
 
 target_sources(libultraship PRIVATE ${Source_Files__Core} ${Source_Files__Core__Libultra} ${Source_Files__Core__Bridge})
@@ -370,7 +370,7 @@ endif()
 #=================== Linking ===================
 
 target_link_libraries(libultraship
-    PRIVATE ZAPDUtils StrHash64
+    PRIVATE ZAPDUtils StrHash64 Lua
     PUBLIC ImGui Mercury storm tinyxml2
 )
 
@@ -407,7 +407,7 @@ endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set_target_properties(${PROJECT_NAME} PROPERTIES
-        XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES 
+        XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES
     )
 endif()
 

@@ -97,7 +97,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     find_package(GLEW REQUIRED)
     target_link_libraries(ImGui PUBLIC ${OPENGL_opengl_LIBRARY} GLEW::GLEW)
     set_target_properties(ImGui PROPERTIES
-        XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES 
+        XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES
     )
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     find_package(GLEW REQUIRED)
@@ -150,3 +150,16 @@ set(THREADPOOL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/thread-pool)
 add_library(ThreadPool INTERFACE)
 
 target_include_directories(ThreadPool INTERFACE ${THREADPOOL_DIR})
+
+#====================== Lua ======================
+
+set(LUA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/lua)
+add_library(Lua STATIC)
+
+FILE(GLOB LUA_HEADERS ${LUA_DIR}/*.h)
+LIST(REMOVE_ITEM LUA_HEADERS ${LUA_DIR}/lopnames.h)
+FILE(GLOB LUA_SOURCE ${LUA_DIR}/*.c)
+
+target_sources(Lua PRIVATE ${LUA_SOURCE} ${LUA_HEADERS})
+
+target_include_directories(Lua PUBLIC ${LUA_HEADERS})
