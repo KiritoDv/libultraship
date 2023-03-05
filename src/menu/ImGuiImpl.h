@@ -65,7 +65,7 @@ typedef union {
     } Gx2;
 } EventImpl;
 
-using WindowDrawFunc = void (*)(bool& enabled);
+using WindowDrawFunc = std::function<void(bool& open)>;
 
 typedef struct {
     bool Enabled;
