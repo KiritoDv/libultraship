@@ -101,6 +101,7 @@ void SetCurrentAudioBackend(uint8_t index, std::pair<const char*, const char*>);
 
 void AddWindow(const std::string& category, const std::string& name, WindowDrawFunc drawFunc, bool isEnabled = false,
                bool isHidden = false);
+void RemoveWindow(const std::string& name);
 void EnableWindow(const std::string& name, bool isEnabled = true);
 
 Ship::GameOverlay* GetGameOverlay();

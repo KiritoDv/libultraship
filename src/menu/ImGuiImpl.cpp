@@ -929,6 +929,23 @@ void AddWindow(const std::string& category, const std::string& name, WindowDrawF
     }
 }
 
+void RemoveWindow(const std::string& name) {
+    if (!customWindows.contains(name)) {
+        SPDLOG_ERROR("SohImGui::RemoveWindow: Attempting to remove non-existent window name %s", name.c_str());
+        return;
+    }
+
+    for (auto& [category, windows] : windowCategories) {
+        windows.erase(std::remove(windows.begin(), windows.end(), name), windows.end());
+    }
+
+    for (auto& [category, windows] : hiddenwindowCategories) {
+        windows.erase(std::remove(windows.begin(), windows.end(), name), windows.end());
+    }
+
+    customWindows.erase(name);
+}
+
 void EnableWindow(const std::string& name, bool isEnabled) {
     customWindows[name].Enabled = isEnabled;
 }
