@@ -52,15 +52,10 @@ typedef struct OSMesgQueue {
     /* 0x14 */ OSMesg* msg;
 } OSMesgQueue; // size = 0x18
 
-extern "C"
-{
 void osCreateMesgQueue(OSMesgQueue* mq, OSMesg* msgBuf, int32_t count);
 int32_t osSendMesg(OSMesgQueue* mq, OSMesg msg, int32_t flag);
 int32_t osJamMesg(OSMesgQueue* mq, OSMesg msg, int32_t flag);
 int32_t osRecvMesg(OSMesgQueue* mq, OSMesg* msg, int32_t flag);
 void osSetEventMesg(OSEvent event, OSMesgQueue* mq, OSMesg msg);
-}
-
-
 
 #endif

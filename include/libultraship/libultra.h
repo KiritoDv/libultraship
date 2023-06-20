@@ -1,6 +1,10 @@
 #ifndef _ULTRA64_H_
 #define _ULTRA64_H_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include "libultra/abi.h"
 #include "libultra/controller.h"
 #include "libultra/convert.h"
@@ -25,5 +29,9 @@
 #include "libultra/time.h"
 #include "libultra/types.h"
 #include "libultra/vi.h"
+
+#ifdef __cplusplus
+};
+#endif
 
 #endif
