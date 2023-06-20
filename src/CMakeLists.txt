@@ -82,7 +82,10 @@ source_group("public")
 
 set(Source_Files__Public__Libultra
     ${CMAKE_CURRENT_SOURCE_DIR}/public/libultra/os.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/public/libultra/os.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/public/libultra/os_mesg.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/public/libultra/os_thread.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/public/libultra/os_controller.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/public/libultra/os_count.cpp
 )
  
 source_group("public/libultra" FILES ${Source_Files__Public__Libultra})
