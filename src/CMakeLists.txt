@@ -434,10 +434,12 @@ if(MSVC)
         $<$<CONFIG:Debug>:
             /Od;
             /Oi-
+            /MTd
         >
         $<$<CONFIG:Release>:
             /Oi;
             /Gy
+            /MT
         >
         /permissive-;
         /MP;

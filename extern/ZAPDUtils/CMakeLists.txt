@@ -139,10 +139,6 @@ if(MSVC)
         )
     elseif("${CMAKE_VS_PLATFORM_NAME}" STREQUAL "Win32")
         target_compile_options(${PROJECT_NAME} PRIVATE
-            $<$<CONFIG:Debug>:
-                /O2;
-                /Ot
-            >
             $<$<CONFIG:Release>:
                 /Gy
             >
@@ -172,6 +168,8 @@ if(MSVC)
             /SUBSYSTEM:CONSOLE
         )
     endif()
+	set(CMAKE_CXX_FLAGS_DEBUG "/MTd")
+	set(CMAKE_CXX_FLAGS_RELEASE "/MT")
 endif()
 
 if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU|Clang|AppleClang")

@@ -139,3 +139,9 @@ set(THREADPOOL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/thread-pool)
 add_library(ThreadPool INTERFACE)
 
 target_include_directories(ThreadPool INTERFACE ${THREADPOOL_DIR})
+
+# Compiler flags
+if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+	set(CMAKE_CXX_FLAGS_DEBUG "/MTd")
+	set(CMAKE_CXX_FLAGS_RELEASE "/MT")
+endif()

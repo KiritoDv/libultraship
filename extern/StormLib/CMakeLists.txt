@@ -398,3 +398,8 @@ if(STORM_BUILD_TESTS)
     install(TARGETS StormLib_test RUNTIME DESTINATION bin)
 endif()
 
+# Compiler flags
+if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+	set(CMAKE_CXX_FLAGS_DEBUG "/MTd")
+	set(CMAKE_CXX_FLAGS_RELEASE "/MT")
+endif()
