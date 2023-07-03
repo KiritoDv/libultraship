@@ -88,6 +88,9 @@ set(Source_Files__Public__Libultra
     ${CMAKE_CURRENT_SOURCE_DIR}/public/libultra/os_count.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/public/libultra/os_eeprom.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/public/libultra/os_pfspak.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/public/libultra/os_timer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/public/libultra/os_cache.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/public/libultra/os_gbpak.cpp
 )
  
 source_group("public/libultra" FILES ${Source_Files__Public__Libultra})

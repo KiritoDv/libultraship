@@ -11,6 +11,7 @@ extern "C" {
 #include "libultra/eeprom.h"
 #include "libultra/exception.h"
 #include "libultra/gbi.h"
+#include "libultra/gbpak.h"
 #include "libultra/gs2dex.h"
 #include "libultra/gu.h"
 #include "libultra/internal.h"
