@@ -28,6 +28,10 @@ void osCreateMesgQueue(OSMesgQueue * mq, OSMesg* msgBuf, int32_t count) {
 
 int32_t osSendMesg(OSMesgQueue* mq, OSMesg msg, int32_t flag) {
 
+    //mq is not initialised by osCreateMesgQueue
+    if (!__lusMesgLockMap.contains(mq))
+        return -1;
+
     std::unique_lock<std::mutex> ul(MQ_MUTEX(mq));
 
     while (MQ_IS_FULL(mq)) {
@@ -54,6 +58,10 @@ int32_t osSendMesg(OSMesgQueue* mq, OSMesg msg, int32_t flag) {
 
 int32_t osJamMesg(OSMesgQueue* mq, OSMesg msg, int32_t flag) {
 
+    // mq is not initialised by osCreateMesgQueue
+    if (!__lusMesgLockMap.contains(mq))
+        return -1;
+
     std::unique_lock ul(MQ_MUTEX(mq));
 
     while (MQ_IS_FULL(mq)) {
@@ -76,6 +84,10 @@ int32_t osJamMesg(OSMesgQueue* mq, OSMesg msg, int32_t flag) {
 }
 
 int32_t osRecvMesg(OSMesgQueue* mq, OSMesg* msg, int32_t flag) {
+
+    // mq is not initialised by osCreateMesgQueue
+    if (!__lusMesgLockMap.contains(mq))
+        return -1;
 
     std::unique_lock ul(MQ_MUTEX(mq));
 

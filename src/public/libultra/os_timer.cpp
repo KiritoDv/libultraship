@@ -23,6 +23,8 @@ uint32_t __lusTimerCallback(uint32_t interval, void* param) {
 
 int32_t osSetTimer(OSTimer* t, OSTime countdown, OSTime interval, OSMesgQueue* mq, OSMesg msg) {
 
+    osStopTimer(t);
+
     t->interval = interval;
 
     if (countdown != 0) {
