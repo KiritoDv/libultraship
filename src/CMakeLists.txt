@@ -92,6 +92,16 @@ set(Source_Files__Public__Libultra
     ${CMAKE_CURRENT_SOURCE_DIR}/public/libultra/os_cache.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/public/libultra/os_gbpak.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/public/libultra/os_vi.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/public/libultra/os_motor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/public/libultra/os_pi.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/public/libultra/os_dp.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/public/libultra/os_sp.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/public/libultra/os_error.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/public/libultra/os_fpccsr.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/public/libultra/os_init.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/public/libultra/os_vm.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/public/libultra/os_interrupt.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/public/libultra/os_ai.cpp
 )
  
 source_group("public/libultra" FILES ${Source_Files__Public__Libultra})
