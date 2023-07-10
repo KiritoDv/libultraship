@@ -5,6 +5,8 @@
 std::map<OSTimer*, SDL_TimerID> __lusTimerIdMap;
 #endif
 
+std::recursive_mutex __lusTimerMapLock;
+
 #define TIMER_ID(t) (__lusTimerIdMap[t])
 
 extern "C" {
@@ -15,13 +17,12 @@ uint32_t __lusTimerCallback(uint32_t interval, void* param) {
 
     osSendMesg(t->mq, t->msg, OS_MESG_NOBLOCK);
 
-    if (t->interval == 0)
-        osStopTimer(t);
-
     return t->interval & 0xffffffff;
 }
 
 int32_t osSetTimer(OSTimer* t, OSTime countdown, OSTime interval, OSMesgQueue* mq, OSMesg msg) {
+    
+    std::lock_guard<std::recursive_mutex> lock(__lusTimerMapLock);
 
     osStopTimer(t);
 
@@ -48,6 +49,8 @@ int32_t osSetTimer(OSTimer* t, OSTime countdown, OSTime interval, OSMesgQueue* m
 }
 
 void osStopTimer(OSTimer* t) {
+
+    std::lock_guard<std::recursive_mutex> lock(__lusTimerMapLock);
 
 #ifndef __WIIU__
     if (__lusTimerIdMap.contains(t))
