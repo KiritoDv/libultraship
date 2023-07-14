@@ -283,8 +283,8 @@ set(Source_Files__Resource__Factories
     ${CMAKE_CURRENT_SOURCE_DIR}/resource/factory/ArrayFactory.h
     ${CMAKE_CURRENT_SOURCE_DIR}/resource/factory/BlobFactory.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/resource/factory/BlobFactory.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/resource/factory/DisplayListFactory.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/resource/factory/DisplayListFactory.h
+#    ${CMAKE_CURRENT_SOURCE_DIR}/resource/factory/DisplayListFactory.cpp
+#    ${CMAKE_CURRENT_SOURCE_DIR}/resource/factory/DisplayListFactory.h
     ${CMAKE_CURRENT_SOURCE_DIR}/resource/factory/MatrixFactory.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/resource/factory/MatrixFactory.h
     ${CMAKE_CURRENT_SOURCE_DIR}/resource/factory/TextureFactory.cpp
@@ -408,6 +408,11 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
 endif()
 
 #=================== Compile Options & Defs ===================
+
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+        F3DEX_GBI
+        F3DEX_PD_GBI
+    )
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
     target_compile_definitions(${PROJECT_NAME} PRIVATE

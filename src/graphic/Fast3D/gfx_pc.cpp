@@ -2550,7 +2550,7 @@ static void gfx_run_dl(Gfx* cmd) {
 #ifdef F3DEX_GBI_2
                 gfx_sp_vertex(C0(12, 8), C0(1, 7) - C0(12, 8), (const Vtx*)seg_addr(cmd->words.w1));
 #elif defined(F3DEX_GBI) || defined(F3DLP_GBI)
-                gfx_sp_vertex(C0(10, 6), C0(16, 8) / 2, seg_addr(cmd->words.w1));
+                gfx_sp_vertex(C0(10, 6), C0(16, 8) / 2, (const Vtx*)seg_addr(cmd->words.w1));
 #else
                 gfx_sp_vertex((C0(0, 16)) / sizeof(Vtx), C0(16, 4), seg_addr(cmd->words.w1));
 #endif
