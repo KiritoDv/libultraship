@@ -2457,10 +2457,12 @@ static void gfx_run_dl(Gfx* cmd) {
 
         switch (opcode) {
                 // RSP commands:
+#ifdef F3DEX_GBI_2
             case G_LOAD_UCODE:
                 rsp.fog_mul = 0;
                 rsp.fog_offset = 0;
                 break;
+#endif
             case G_MARKER: {
                 cmd++;
 
@@ -2552,7 +2554,7 @@ static void gfx_run_dl(Gfx* cmd) {
 #elif defined(F3DEX_GBI) || defined(F3DLP_GBI)
                 gfx_sp_vertex(C0(10, 6), C0(16, 8) / 2, (const Vtx*)seg_addr(cmd->words.w1));
 #else
-                gfx_sp_vertex((C0(0, 16)) / sizeof(Vtx), C0(16, 4), seg_addr(cmd->words.w1));
+                gfx_sp_vertex((C0(0, 16)) / sizeof(Vtx), C0(16, 4), (const Vtx*)seg_addr(cmd->words.w1));
 #endif
                 break;
             case G_VTX_OTR_HASH: {
@@ -2618,9 +2620,11 @@ static void gfx_run_dl(Gfx* cmd) {
                     --cmd; // increase after break
                 }
             } break;
+#ifdef F3DEX_GBI_2
             case G_MODIFYVTX:
                 gfx_sp_modify_vertex(C0(1, 15), C0(16, 8), cmd->words.w1);
                 break;
+#endif
             case G_DL:
                 if (C0(16, 1) == 0) {
                     // Push return address
@@ -2732,6 +2736,38 @@ static void gfx_run_dl(Gfx* cmd) {
                 gfx_sp_tri1(C0(16, 8) / 2, C0(8, 8) / 2, C0(0, 8) / 2, false);
                 gfx_sp_tri1(C1(16, 8) / 2, C1(8, 8) / 2, C1(0, 8) / 2, false);
                 break;
+#elif defined(F3DPD_GBI)
+            case (uint8_t)G_TRI4: {
+                uint8_t x = C1(0, 4);
+                uint8_t y = C1(4, 4);
+                uint8_t z = C0(0, 4);
+
+                if (x | y | z)
+                    gfx_sp_tri1(x, y, z, false);
+
+                x = C1(8, 4);
+                y = C1(12, 4);
+                z = C0(4, 4);
+
+                if (x | y | z)
+                    gfx_sp_tri1(x, y, z, false);
+
+                x = C1(16, 4);
+                y = C1(20, 4);
+                z = C0(8, 4);
+
+                if (x | y | z)
+                    gfx_sp_tri1(x, y, z, false);
+
+                x = C1(24, 4);
+                y = C1(28, 4);
+                z = C0(12, 4);
+
+                if (x | y | z)
+                    gfx_sp_tri1(x, y, z, false);
+
+                break;
+            }
 #endif
             case (uint8_t)G_SETOTHERMODE_L:
 #ifdef F3DEX_GBI_2

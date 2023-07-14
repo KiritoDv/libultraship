@@ -117,6 +117,10 @@
 #define G_RDPHALF_CONT (G_IMMFIRST - 13)
 #endif
 
+#ifdef F3DPD_GBI
+#define G_TRI4 -79
+#endif
+
 /* We are overloading 2 of the immediate commands
    to keep the byte alignment of dmem the same */
 

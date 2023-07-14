@@ -410,8 +410,7 @@ endif()
 #=================== Compile Options & Defs ===================
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
-        F3DEX_GBI
-        F3DEX_PD_GBI
+        F3DPD_GBI
     )
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
