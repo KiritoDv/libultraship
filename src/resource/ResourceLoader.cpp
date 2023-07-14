@@ -25,7 +25,7 @@ ResourceLoader::~ResourceLoader() {
 void ResourceLoader::RegisterGlobalResourceFactories() {
     RegisterResourceFactory(ResourceType::Texture, "Texture", std::make_shared<TextureFactory>());
     RegisterResourceFactory(ResourceType::Vertex, "Vertex", std::make_shared<VertexFactory>());
-    RegisterResourceFactory(ResourceType::DisplayList, "DisplayList", std::make_shared<DisplayListFactory>());
+    //RegisterResourceFactory(ResourceType::DisplayList, "DisplayList", std::make_shared<DisplayListFactory>());
     RegisterResourceFactory(ResourceType::Matrix, "Matrix", std::make_shared<MatrixFactory>());
     RegisterResourceFactory(ResourceType::Array, "Array", std::make_shared<ArrayFactory>());
     RegisterResourceFactory(ResourceType::Blob, "Blob", std::make_shared<BlobFactory>());
