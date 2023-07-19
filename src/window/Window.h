@@ -7,6 +7,8 @@
 #include "graphic/Fast3D/gfx_window_manager_api.h"
 #include "graphic/Fast3D/gfx_rendering_api.h"
 #include "window/gui/Gui.h"
+#include "libultraship/libultra/gbi.h"
+
 
 namespace LUS {
 enum class WindowBackend { DX11, DX12, GLX_OPENGL, SDL_OPENGL, SDL_METAL, GX2, BACKEND_COUNT };
@@ -24,6 +26,8 @@ class Window {
     void Init();
     void Close();
     void StartFrame();
+    void EndFrame();
+    void RunDisplayList(Gfx* displayList);
     void SetTargetFps(int32_t fps);
     void SetMaximumFrameLatency(int32_t latency);
     void GetPixelDepthPrepare(float x, float y);

@@ -2,6 +2,7 @@
 #include "window/Window.h"
 #include "Context.h"
 
+
 extern "C" {
 
 uint32_t WindowGetWidth() {
@@ -23,4 +24,17 @@ void WindowGetPixelDepthPrepare(float x, float y) {
 uint16_t WindowGetPixelDepth(float x, float y) {
     return LUS::Context::GetInstance()->GetWindow()->GetPixelDepth(x, y);
 }
+
+void WindowStartFrame() {
+    LUS::Context::GetInstance()->GetWindow()->StartFrame();
+}
+
+void WindowEndFrame() {
+    LUS::Context::GetInstance()->GetWindow()->EndFrame();
+}
+
+void WindowRunDisplayList(Gfx* displayList) {
+    LUS::Context::GetInstance()->GetWindow()->RunDisplayList(displayList);
+}
+
 }

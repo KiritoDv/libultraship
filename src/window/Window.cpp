@@ -106,6 +106,15 @@ void Window::StartFrame() {
     gfx_start_frame();
 }
 
+void Window::EndFrame() {
+    gfx_end_frame();
+}
+
+void Window::RunDisplayList(Gfx* displayList) {
+    const std::unordered_map<Mtx*, MtxF> mtxMap;
+    gfx_run(displayList, mtxMap);
+}
+
 void Window::SetTargetFps(int32_t fps) {
     gfx_set_target_fps(fps);
 }
