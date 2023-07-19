@@ -267,6 +267,8 @@ static LRESULT CALLBACK gfx_dxgi_wnd_proc(HWND h_wnd, UINT message, WPARAM w_par
                         InvalidateRect(h_wnd, nullptr, false);
                         UpdateWindow(h_wnd);
                     }
+                } else {
+                    return DefWindowProcW(h_wnd, message, w_param, l_param);
                 }
             }
             break;
