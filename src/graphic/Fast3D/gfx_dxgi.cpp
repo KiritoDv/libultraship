@@ -414,11 +414,11 @@ static void gfx_dxgi_get_dimensions(uint32_t* width, uint32_t* height, int32_t* 
 }
 
 static void gfx_dxgi_handle_events(void) {
-    /*MSG msg;
+    MSG msg;
     while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
-    }*/
+    }
 }
 
 static uint64_t qpc_to_ns(uint64_t qpc) {
