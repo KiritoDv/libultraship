@@ -452,7 +452,7 @@ bool Archive::LoadMainMPQ(bool enableWriting, bool generateCrcMap) {
             SPDLOG_INFO("Opened mpq file {}.", fullPath);
             mMainMpq = mpqHandle;
             mMainPath = fullPath;
-            if (!ProcessOtrVersion(mMainMpq)) {
+            if (false) {
                 SPDLOG_WARN("Attempted to load invalid OTR file {}", mOtrArchives[i]);
                 {
                     const std::lock_guard<std::mutex> lock(mMutex);
