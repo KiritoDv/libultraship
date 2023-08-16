@@ -346,3 +346,7 @@ ZAPDUtils.lib
 .vs/
 .idea/
 cmake-build-**
+cmake_install.cmake
+*.a
+*.o
+*.pc
