@@ -17,6 +17,7 @@ typedef union {
 #define OS_MESG_16(x) ((OSMesg){ .data16 = (x) })
 #define OS_MESG_32(x) ((OSMesg){ .data32 = (x) })
 #define OS_MESG_PTR(x) ((OSMesg){ .ptr = (x) })
+#define OS_MESG_VALID(x) ((x).ptr != NULL)
 
 #define osSendMesg8(queue, msg, flag) osSendMesg(queue, OS_MESG_8(msg), flag)
 #define osSendMesg16(queue, msg, flag) osSendMesg(queue, OS_MESG_16(msg), flag)
