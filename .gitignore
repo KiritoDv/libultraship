@@ -350,3 +350,11 @@ cmake_install.cmake
 *.a
 *.o
 *.pc
+*.vcxproj
+*.sln
+*.filters
+*.stamp
+*.depend
+*.lib
+*.tlog
+*.recipe
