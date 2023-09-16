@@ -15,10 +15,11 @@ enum class ResourceType {
     Blob = 0x4F424C42,        // OBLB
     Texture = 0x4F544558,     // OTEX
 
-    // LUS of Harkinian
+    // CubeOS
     Demo = 0x44454D4F,        // DEMO
     Anim = 0x414E494D,        // ANIM
     Bank = 0x42414E4B,        // BANK
-    Audio = 0x41554643,       // AIFC
+    Sample = 0x41554643,      // AIFC
+    Sequence = 0x53455143,    // SEQC
 };
 } // namespace LUS
