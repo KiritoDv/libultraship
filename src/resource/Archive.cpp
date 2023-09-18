@@ -489,6 +489,10 @@ bool Archive::LoadMainMPQ(bool enableWriting, bool generateCrcMap) {
         }
     }
 
+    if (!ProcessOtrVersion(mMainMpq)) {
+        SPDLOG_INFO("({}) Missing version file on original rom, playing unknown version", mMainPath);
+    }
+
     return true;
 }
 
