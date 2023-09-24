@@ -214,6 +214,11 @@ void Config::SetAudioBackend(AudioBackend backend) {
 }
 
 WindowBackend Config::GetWindowBackend() {
+#ifdef _WIN32
+    // TODO: Fix the stupid DirectX backend
+    return WindowBackend::SDL_OPENGL;
+#endif
+
     WindowBackend backend;
     int backendId = GetInt("Window.Backend.Id", -1);
     if (backendId != -1 && backendId < static_cast<int>(WindowBackend::BACKEND_COUNT)) {
