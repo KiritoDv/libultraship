@@ -116,6 +116,8 @@ static struct RSP {
     uint32_t geometry_mode;
     int16_t fog_mul, fog_offset;
 
+    uint32_t extra_geometry_mode;
+
     struct {
         // U0.16
         uint16_t s, t;
@@ -1387,6 +1389,11 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
             cross = -cross;
         }
 
+        // If inverted culling is requested, negate the cross
+        if ((rsp.extra_geometry_mode & G_EX_INVERT_CULLING) == 1) {
+            cross = -cross;
+        }
+
         switch (rsp.geometry_mode & G_CULL_BOTH) {
             case G_CULL_FRONT:
                 if (cross <= 0) {
@@ -1772,6 +1779,11 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
 static void gfx_sp_geometry_mode(uint32_t clear, uint32_t set) {
     rsp.geometry_mode &= ~clear;
     rsp.geometry_mode |= set;
+}
+
+static void gfx_sp_extra_geometry_mode(uint32_t clear, uint32_t set) {
+    rsp.extra_geometry_mode &= ~clear;
+    rsp.extra_geometry_mode |= set;
 }
 
 static void gfx_adjust_viewport_or_scissor(XYWidthHeight* area) {
@@ -2409,6 +2421,14 @@ static void gfx_s2dex_bg_copy(uObjBg* bg) {
         data = (uintptr_t) reinterpret_cast<char*>(tex->ImageData);
     }
 
+    s16 dsdx = 4 << 10;
+    s16 uls = bg->b.imageX << 3;
+    // Flip flag only flips horizontally
+    if (bg->b.imageFlip == G_BG_FLAG_FLIPS) {
+        dsdx = -dsdx;
+        uls = (bg->b.imageW - bg->b.imageX) << 3;
+    }
+
     SUPPORT_CHECK(bg->b.imageSiz == G_IM_SIZ_16b);
     gfx_dp_set_texture_image(G_IM_FMT_RGBA, G_IM_SIZ_16b, 0, nullptr, texFlags, rawTexMetadata, (void*)data);
     gfx_dp_set_tile(G_IM_FMT_RGBA, G_IM_SIZ_16b, 0, 0, G_TX_LOADTILE, 0, 0, 0, 0, 0, 0, 0);
@@ -2417,8 +2437,8 @@ static void gfx_s2dex_bg_copy(uObjBg* bg) {
                     0);
     gfx_dp_set_tile_size(G_TX_RENDERTILE, 0, 0, bg->b.imageW, bg->b.imageH);
     gfx_dp_texture_rectangle(bg->b.frameX, bg->b.frameY, bg->b.frameX + bg->b.imageW - 4,
-                             bg->b.frameY + bg->b.imageH - 4, G_TX_RENDERTILE, bg->b.imageX << 3, bg->b.imageY << 3,
-                             4 << 10, 1 << 10, false);
+                             bg->b.frameY + bg->b.imageH - 4, G_TX_RENDERTILE, uls, bg->b.imageY << 3, dsdx, 1 << 10,
+                             false);
 }
 
 static inline void* seg_addr(uintptr_t w1) {
@@ -2495,8 +2515,13 @@ static void gfx_run_dl(Gfx* cmd) {
             case G_MTX: {
                 uintptr_t mtxAddr = cmd->words.w1;
 
-                if (mtxAddr == SEG_ADDR(0, 0x12DB20) || mtxAddr == SEG_ADDR(0, 0x12DB40) ||
-                    mtxAddr == SEG_ADDR(0, 0xFBC20) || mtxAddr == SEG_ADDR(0, 0xFCD40)) {
+                if (mtxAddr == SEG_ADDR(0, 0x12DB20) || // GC MQ D
+                    mtxAddr == SEG_ADDR(0, 0x12DB40) || // GC NMQ D
+                    mtxAddr == SEG_ADDR(0, 0xFBC20) ||  // GC PAL
+                    mtxAddr == SEG_ADDR(0, 0xFBC01) ||  // GC MQ PAL
+                    mtxAddr == SEG_ADDR(0, 0xFCD00) ||  // PAL1.0
+                    mtxAddr == SEG_ADDR(0, 0xFCD40)     // PAL1.1
+                ) {
                     mtxAddr = clearMtx;
                 }
 
@@ -3073,6 +3098,9 @@ static void gfx_run_dl(Gfx* cmd) {
                     gfx_s2dex_bg_copy((uObjBg*)cmd->words.w1); // not seg_addr here it seems
                 }
 
+                break;
+            case G_EXTRAGEOMETRYMODE:
+                gfx_sp_extra_geometry_mode(~C0(0, 24), cmd->words.w1);
                 break;
         }
         ++cmd;

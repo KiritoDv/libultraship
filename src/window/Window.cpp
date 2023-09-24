@@ -9,6 +9,8 @@
 #include "graphic/Fast3D/gfx_dxgi.h"
 #include "graphic/Fast3D/gfx_opengl.h"
 #include "graphic/Fast3D/gfx_metal.h"
+#include "graphic/Fast3D/gfx_gx2.h"
+#include "graphic/Fast3D/gfx_wiiu.h"
 #include "graphic/Fast3D/gfx_direct3d11.h"
 #include "graphic/Fast3D/gfx_direct3d12.h"
 #include "controller/KeyboardScancodes.h"
@@ -61,6 +63,8 @@ void Window::Init() {
 
     mIsFullscreen =
         LUS::Context::GetInstance()->GetConfig()->GetBool("Window.Fullscreen.Enabled", false) || steamDeckGameMode;
+    mPosX = LUS::Context::GetInstance()->GetConfig()->GetInt("Window.PositionX", mPosX);
+    mPosY = LUS::Context::GetInstance()->GetConfig()->GetInt("Window.PositionY", mPosY);
 
     if (mIsFullscreen) {
         mWidth = LUS::Context::GetInstance()->GetConfig()->GetInt("Window.Fullscreen.Width",
@@ -68,10 +72,8 @@ void Window::Init() {
         mHeight = LUS::Context::GetInstance()->GetConfig()->GetInt("Window.Fullscreen.Height",
                                                                    steamDeckGameMode ? 800 : 1080);
     } else {
-        mWidth = LUS::Context::GetInstance()->GetConfig()->GetInt("Window.Width", mWidth);
-        mHeight = LUS::Context::GetInstance()->GetConfig()->GetInt("Window.Height", mHeight);
-        mPosX = LUS::Context::GetInstance()->GetConfig()->GetInt("Window.PositionX", mPosX);
-        mPosY = LUS::Context::GetInstance()->GetConfig()->GetInt("Window.PositionY", mPosY);
+        mWidth = LUS::Context::GetInstance()->GetConfig()->GetInt("Window.Width", 640);
+        mHeight = LUS::Context::GetInstance()->GetConfig()->GetInt("Window.Height", 480);
     }
 
     mAvailableWindowBackends = std::make_shared<std::vector<WindowBackend>>();
@@ -149,7 +151,7 @@ void Window::MainLoop(void (*mainFunction)(void)) {
 }
 
 bool Window::KeyUp(int32_t scancode) {
-    if (scancode == Context::GetInstance()->GetConfig()->GetInt("Shortcuts.Fullscreen", KbScancode::LUS_KB_F9)) {
+    if (scancode == Context::GetInstance()->GetConfig()->GetInt("Shortcuts.Fullscreen", KbScancode::LUS_KB_F11)) {
         Context::GetInstance()->GetWindow()->ToggleFullscreen();
     }
 
@@ -256,12 +258,6 @@ void Window::InitWindowManager() {
             break;
 #endif
 #if defined(ENABLE_OPENGL) || defined(__APPLE__)
-#if defined(__linux__) && defined(X11_SUPPORTED)
-        case WindowBackend::GLX_OPENGL:
-            mRenderingApi = &gfx_opengl_api;
-            mWindowManagerApi = &gfx_glx;
-            break;
-#endif
         case WindowBackend::SDL_OPENGL:
             mRenderingApi = &gfx_opengl_api;
             mWindowManagerApi = &gfx_sdl;

@@ -8,11 +8,13 @@
 #include <string>
 
 #include <windows.h>
+#include <windowsx.h> // GET_X_LPARAM(), GET_Y_LPARAM()
 #include <wrl/client.h>
 #include <dxgi1_3.h>
 #include <dxgi1_4.h>
 #include <dxgi1_5.h>
 #include <versionhelpers.h>
+#include <d3d11.h>
 
 #include <shellscalingapi.h>
 
@@ -69,8 +71,11 @@ static struct {
     std::map<UINT, DXGI_FRAME_STATISTICS> frame_stats;
     std::set<std::pair<UINT, UINT>> pending_frame_stats;
     bool dropped_frame;
+    std::tuple<HMONITOR, RECT, BOOL> h_Monitor; // 0: Handle, 1: Display Monitor Rect, 2: Is_Primary
+    std::vector<std::tuple<HMONITOR, RECT, BOOL>> monitor_list;
     bool zero_latency;
-    float detected_hz;
+    double detected_hz;
+    double display_period; // (1000 / dxgi.detected_hz) in ms
     UINT length_in_vsync_frames;
     uint32_t target_fps;
     uint32_t maximum_frame_latency;
@@ -147,8 +152,12 @@ template <typename Fun> static void run_as_dpi_aware(Fun f) {
 }
 
 static void apply_maximum_frame_latency(bool first) {
+    DXGI_SWAP_CHAIN_DESC swap_desc = {};
+    dxgi.swap_chain->GetDesc(&swap_desc);
+
     ComPtr<IDXGISwapChain2> swap_chain2;
-    if (dxgi.swap_chain->QueryInterface(__uuidof(IDXGISwapChain2), &swap_chain2) == S_OK) {
+    if ((swap_desc.Flags & DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT) &&
+        dxgi.swap_chain->QueryInterface(__uuidof(IDXGISwapChain2), &swap_chain2) == S_OK) {
         ThrowIfFailed(swap_chain2->SetMaximumFrameLatency(dxgi.maximum_frame_latency));
         if (first) {
             dxgi.waitable_object = swap_chain2->GetFrameLatencyWaitableObject();
@@ -160,6 +169,66 @@ static void apply_maximum_frame_latency(bool first) {
         ThrowIfFailed(device1->SetMaximumFrameLatency(dxgi.maximum_frame_latency));
     }
     dxgi.applied_maximum_frame_latency = dxgi.maximum_frame_latency;
+}
+
+std::vector<std::tuple<HMONITOR, RECT, BOOL>> GetMonitorList() {
+    std::vector<std::tuple<HMONITOR, RECT, BOOL>> monitors;
+    EnumDisplayMonitors(
+        nullptr, nullptr,
+        [](HMONITOR hmon, HDC hdc, LPRECT rc, LPARAM lp) {
+            UNREFERENCED_PARAMETER(hdc);
+            UNREFERENCED_PARAMETER(rc);
+
+            bool isPrimary;
+            MONITORINFOEX mi = {};
+            mi.cbSize = sizeof(MONITORINFOEX);
+            GetMonitorInfo(hmon, &mi);
+            auto monitors = (std::vector<std::tuple<HMONITOR, RECT, BOOL>>*)lp;
+            if (mi.dwFlags == MONITORINFOF_PRIMARY) {
+                isPrimary = TRUE;
+            } else {
+                isPrimary = FALSE;
+            }
+            monitors->push_back({ hmon, mi.rcMonitor, isPrimary });
+            return TRUE;
+        },
+        (LPARAM)&monitors);
+    return monitors;
+}
+
+// Uses coordinates to get a Monitor handle from a list
+bool GetMonitorAtCoords(std::vector<std::tuple<HMONITOR, RECT, BOOL>> MonitorList, int x, int y, UINT cx, UINT cy,
+                        std::tuple<HMONITOR, RECT, BOOL>& MonitorInfo) {
+    RECT wr = { x, y, (x + cx), (y + cy) };
+    std::tuple<HMONITOR, RECT, BOOL> primary;
+    for (std::tuple<HMONITOR, RECT, BOOL> i : MonitorList) {
+        if (PtInRect(&get<1>(i), POINT((x + (cx / 2)), (y + (cy / 2))))) {
+            MonitorInfo = i;
+            return true;
+        }
+        if (get<2>(i)) {
+            primary = i;
+        }
+    }
+    RECT intersection;
+    LONG area;
+    LONG lastArea = 0;
+    std::tuple<HMONITOR, RECT, BOOL> biggest;
+    for (std::tuple<HMONITOR, RECT, BOOL> i : MonitorList) {
+        if (IntersectRect(&intersection, &get<1>(i), &wr)) {
+            area = (intersection.right - intersection.left) * (intersection.bottom - intersection.top);
+            if (area > lastArea) {
+                lastArea = area;
+                biggest = i;
+            }
+        }
+    }
+    if (lastArea > 0) {
+        MonitorInfo = biggest;
+        return true;
+    }
+    MonitorInfo = primary; // Fallback to primary, when out of bounds.
+    return false;
 }
 
 static void toggle_borderless_window_full_screen(bool enable, bool call_callback) {
@@ -180,11 +249,17 @@ static void toggle_borderless_window_full_screen(bool enable, bool call_callback
             SetWindowPos(dxgi.h_wnd, NULL, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE);
             ShowWindow(dxgi.h_wnd, SW_MAXIMIZE);
         } else {
+            std::tuple<HMONITOR, RECT, BOOL> Monitor;
             auto conf = LUS::Context::GetInstance()->GetConfig();
             dxgi.current_width = conf->GetInt("Window.Width", 640);
             dxgi.current_height = conf->GetInt("Window.Height", 480);
             dxgi.posX = conf->GetInt("Window.PositionX", 100);
             dxgi.posY = conf->GetInt("Window.PositionY", 100);
+            if (!GetMonitorAtCoords(dxgi.monitor_list, dxgi.posX, dxgi.posY, dxgi.current_width, dxgi.current_height,
+                                    Monitor)) { // Fallback to default when out of bounds.
+                dxgi.posX = 100;
+                dxgi.posY = 100;
+            }
             RECT wr = { dxgi.posX, dxgi.posY, dxgi.posX + static_cast<int32_t>(dxgi.current_width),
                         dxgi.posY + static_cast<int32_t>(dxgi.current_height) };
             AdjustWindowRect(&wr, WS_OVERLAPPEDWINDOW, FALSE);
@@ -200,14 +275,9 @@ static void toggle_borderless_window_full_screen(bool enable, bool call_callback
         GetWindowPlacement(dxgi.h_wnd, &window_placement);
         dxgi.last_maximized_state = window_placement.showCmd == SW_SHOWMAXIMIZED;
 
-        // Get in which monitor the window is
-        HMONITOR h_monitor = MonitorFromWindow(dxgi.h_wnd, MONITOR_DEFAULTTONEAREST);
-
+        // We already know on what monitor we are (gets it on init or move)
         // Get info from that monitor
-        MONITORINFOEX monitor_info;
-        monitor_info.cbSize = sizeof(MONITORINFOEX);
-        GetMonitorInfo(h_monitor, &monitor_info);
-        RECT r = monitor_info.rcMonitor;
+        RECT r = get<1>(dxgi.h_Monitor);
 
         // Set borderless full screen to that monitor
         SetWindowLongPtr(dxgi.h_wnd, GWL_STYLE, WS_VISIBLE | WS_POPUP);
@@ -236,19 +306,74 @@ static void onkeyup(WPARAM w_param, LPARAM l_param) {
     }
 }
 
+double HzToPeriod(double Frequency) {
+    if (Frequency == 0)
+        Frequency = 60; // Default to 60, to prevent devision by zero
+    double period = (double)1000 / Frequency;
+    if (period == 0)
+        period = 16.666666; // In case we go too low, use 16 ms (60 Hz) to prevent division by zero later
+    return period;
+}
+
+void GetMonitorHzPeriod(HMONITOR hMonitor, double& Frequency, double& Period) {
+    DEVMODE dm = {};
+    dm.dmSize = sizeof(DEVMODE);
+    if (hMonitor != NULL) {
+        MONITORINFOEX minfoex = {};
+        minfoex.cbSize = sizeof(MONITORINFOEX);
+
+        if (GetMonitorInfo(hMonitor, (LPMONITORINFOEX)&minfoex)) {
+            if (EnumDisplaySettings(minfoex.szDevice, ENUM_CURRENT_SETTINGS, &dm)) {
+                Frequency = dm.dmDisplayFrequency;
+                Period = HzToPeriod(Frequency);
+            }
+        }
+    }
+}
+
+void GetMonitorHzPeriod(std::tuple<HMONITOR, RECT, BOOL> Monitor, double& Frequency, double& Period) {
+    HMONITOR hMonitor = get<0>(Monitor);
+    DEVMODE dm = {};
+    dm.dmSize = sizeof(DEVMODE);
+    if (hMonitor != NULL) {
+        MONITORINFOEX minfoex = {};
+        minfoex.cbSize = sizeof(MONITORINFOEX);
+
+        if (GetMonitorInfo(hMonitor, (LPMONITORINFOEX)&minfoex)) {
+            if (EnumDisplaySettings(minfoex.szDevice, ENUM_CURRENT_SETTINGS, &dm)) {
+                Frequency = dm.dmDisplayFrequency;
+                Period = HzToPeriod(Frequency);
+            }
+        }
+    }
+}
+
 static LRESULT CALLBACK gfx_dxgi_wnd_proc(HWND h_wnd, UINT message, WPARAM w_param, LPARAM l_param) {
     char fileName[256];
     LUS::WindowEvent event_impl;
     event_impl.Win32 = { h_wnd, static_cast<int>(message), static_cast<int>(w_param), static_cast<int>(l_param) };
     LUS::Context::GetInstance()->GetWindow()->GetGui()->Update(event_impl);
+    std::tuple<HMONITOR, RECT, BOOL> newMonitor;
     switch (message) {
         case WM_SIZE:
             dxgi.current_width = LOWORD(l_param);
             dxgi.current_height = HIWORD(l_param);
+            GetMonitorAtCoords(dxgi.monitor_list, dxgi.posX, dxgi.posY, dxgi.current_width, dxgi.current_height,
+                               newMonitor);
+            if (get<0>(newMonitor) != get<0>(dxgi.h_Monitor)) {
+                dxgi.h_Monitor = newMonitor;
+                GetMonitorHzPeriod(dxgi.h_Monitor, dxgi.detected_hz, dxgi.display_period);
+            }
             break;
         case WM_MOVE:
-            dxgi.posX = LOWORD(l_param);
-            dxgi.posY = HIWORD(l_param);
+            dxgi.posX = GET_X_LPARAM(l_param);
+            dxgi.posY = GET_Y_LPARAM(l_param);
+            GetMonitorAtCoords(dxgi.monitor_list, dxgi.posX, dxgi.posY, dxgi.current_width, dxgi.current_height,
+                               newMonitor);
+            if (get<0>(newMonitor) != get<0>(dxgi.h_Monitor)) {
+                dxgi.h_Monitor = newMonitor;
+                GetMonitorHzPeriod(dxgi.h_Monitor, dxgi.detected_hz, dxgi.display_period);
+            }
             break;
         case WM_DESTROY:
             PostQuitMessage(0);
@@ -289,6 +414,12 @@ static LRESULT CALLBACK gfx_dxgi_wnd_proc(HWND h_wnd, UINT message, WPARAM w_par
             CVarSetInteger("gNewFileDropped", 1);
             CVarSave();
             break;
+        case WM_DISPLAYCHANGE:
+            dxgi.monitor_list = GetMonitorList();
+            GetMonitorAtCoords(dxgi.monitor_list, dxgi.posX, dxgi.posY, dxgi.current_width, dxgi.current_height,
+                               dxgi.h_Monitor);
+            GetMonitorHzPeriod(dxgi.h_Monitor, dxgi.detected_hz, dxgi.display_period);
+            break;
         default:
             return DefWindowProcW(h_wnd, message, w_param, l_param);
     }
@@ -305,7 +436,13 @@ void gfx_dxgi_init(const char* game_name, const char* gfx_api_name, bool start_i
 
     dxgi.target_fps = 60;
     dxgi.maximum_frame_latency = 1;
-    dxgi.timer = CreateWaitableTimer(nullptr, false, nullptr);
+
+    // Use high-resolution timer by default on Windows 10 (so that NtSetTimerResolution (...) hacks are not needed)
+    dxgi.timer = CreateWaitableTimerExW(nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
+    // Fallback to low resolution timer if unsupported by the OS
+    if (dxgi.timer == nullptr) {
+        dxgi.timer = CreateWaitableTimer(nullptr, FALSE, nullptr);
+    }
 
     // Prepare window title
 
@@ -340,8 +477,15 @@ void gfx_dxgi_init(const char* game_name, const char* gfx_api_name, bool start_i
         AdjustWindowRect(&wr, WS_OVERLAPPEDWINDOW, FALSE);
         dxgi.current_width = wr.right - wr.left;
         dxgi.current_height = wr.bottom - wr.top;
+        dxgi.monitor_list = GetMonitorList();
         dxgi.posX = posX;
         dxgi.posY = posY;
+        if (!GetMonitorAtCoords(dxgi.monitor_list, dxgi.posX, dxgi.posY, dxgi.current_width, dxgi.current_height,
+                                dxgi.h_Monitor)) {
+            dxgi.posX = 100;
+            dxgi.posY = 100;
+        }
+
         dxgi.h_wnd = CreateWindowW(WINCLASS_NAME, w_title, WS_OVERLAPPEDWINDOW, dxgi.posX + wr.left, dxgi.posY + wr.top,
                                    dxgi.current_width, dxgi.current_height, nullptr, nullptr, nullptr, nullptr);
     });
@@ -350,6 +494,9 @@ void gfx_dxgi_init(const char* game_name, const char* gfx_api_name, bool start_i
 
     ShowWindow(dxgi.h_wnd, SW_SHOW);
     UpdateWindow(dxgi.h_wnd);
+
+    // Get refresh rate
+    GetMonitorHzPeriod(dxgi.h_Monitor, dxgi.detected_hz, dxgi.display_period);
 
     if (start_in_fullscreen) {
         toggle_borderless_window_full_screen(true, false);
@@ -371,11 +518,20 @@ static void gfx_dxgi_set_cursor_visibility(bool visible) {
     // https://devblogs.microsoft.com/oldnewthing/20091217-00/?p=15643
     // ShowCursor uses a counter, not a boolean value, and increments or decrements that value when called
     // This means we need to keep calling it until we get the value we want
+
+    //
+    //  NOTE:  If you continue calling until you "get the value you want" and there is no mouse attached,
+    //  it will lock the software up.  Windows always returns -1 if there is no mouse!
+    //
+
+    const int _MAX_TRIES = 15; // Prevent spinning infinitely if no mouse is plugged in
+
+    int cursorVisibilityTries = 0;
     int cursorVisibilityCounter;
     if (visible) {
         do {
             cursorVisibilityCounter = ShowCursor(true);
-        } while (cursorVisibilityCounter < 0);
+        } while (cursorVisibilityCounter < 0 && ++cursorVisibilityTries < _MAX_TRIES);
     } else {
         do {
             cursorVisibilityCounter = ShowCursor(false);
@@ -486,10 +642,8 @@ static bool gfx_dxgi_start_frame(void) {
         if (estimated_vsync_interval_ns < 2000 || estimated_vsync_interval_ns > 1000000000) {
             // Unreasonable, maybe a monitor change
             estimated_vsync_interval_ns = 16666666;
-            estimated_vsync_interval = estimated_vsync_interval_ns * dxgi.qpc_freq / 1000000000;
+            estimated_vsync_interval = (double)estimated_vsync_interval_ns * dxgi.qpc_freq / 1000000000;
         }
-
-        dxgi.detected_hz = (float)((double)1000000000 / (double)estimated_vsync_interval_ns);
 
         UINT queued_vsyncs = 0;
         bool is_first = true;
@@ -564,32 +718,61 @@ static bool gfx_dxgi_start_frame(void) {
             vsyncs_to_wait = 4;
             dxgi.use_timer = true;
         }
-        dxgi.length_in_vsync_frames = vsyncs_to_wait;
     } else {
-        dxgi.length_in_vsync_frames = 1;
         dxgi.use_timer = true;
     }
-
+    // dxgi.length_in_vsync_frames is used as present interval. Present interval >1 (aka fractional V-Sync)
+    // breaks VRR and introduces even more input lag than capping via normal V-Sync does.
+    // Get the present interval the user wants instead (V-Sync toggle).
+    if (dxgi.is_vsync_enabled != CVarGetInteger("gVsyncEnabled", 1)) {
+        // Make sure only 0 or 1 is set, as present interval technically accepts a range from 0 to 4.
+        dxgi.is_vsync_enabled = !!CVarGetInteger("gVsyncEnabled", 1);
+    }
+    dxgi.length_in_vsync_frames = dxgi.is_vsync_enabled;
     return true;
 }
 
 static void gfx_dxgi_swap_buffers_begin(void) {
     LARGE_INTEGER t;
+    dxgi.use_timer = true;
     if (dxgi.use_timer || (dxgi.tearing_support && !dxgi.is_vsync_enabled)) {
+        ComPtr<ID3D11Device> device;
+        dxgi.swap_chain_device.As(&device);
+
+        if (device != nullptr) {
+            ComPtr<ID3D11DeviceContext> dev_ctx;
+            device->GetImmediateContext(&dev_ctx);
+
+            if (dev_ctx != nullptr) {
+                // Always flush the immediate context before forcing a CPU-wait, otherwise the GPU might only start
+                // working when the SwapChain is presented.
+                dev_ctx->Flush();
+            }
+        }
         QueryPerformanceCounter(&t);
         int64_t next = qpc_to_100ns(dxgi.previous_present_time.QuadPart) +
                        FRAME_INTERVAL_NS_NUMERATOR / (FRAME_INTERVAL_NS_DENOMINATOR * 100);
-        int64_t left = next - qpc_to_100ns(t.QuadPart);
+        int64_t left = next - qpc_to_100ns(t.QuadPart) - 15000UL;
         if (left > 0) {
             LARGE_INTEGER li;
             li.QuadPart = -left;
             SetWaitableTimer(dxgi.timer, &li, 0, nullptr, nullptr, false);
             WaitForSingleObject(dxgi.timer, INFINITE);
+
+            do {
+                YieldProcessor();
+                QueryPerformanceCounter(&t);
+            } while (t.QuadPart < next);
         }
     }
     QueryPerformanceCounter(&t);
     dxgi.previous_present_time = t;
-    ThrowIfFailed(dxgi.swap_chain->Present(dxgi.length_in_vsync_frames, 0));
+    if (dxgi.tearing_support && !dxgi.length_in_vsync_frames) {
+        // 512: DXGI_PRESENT_ALLOW_TEARING - allows for true V-Sync off with flip model
+        ThrowIfFailed(dxgi.swap_chain->Present(dxgi.length_in_vsync_frames, DXGI_PRESENT_ALLOW_TEARING));
+    } else {
+        ThrowIfFailed(dxgi.swap_chain->Present(dxgi.length_in_vsync_frames, 0));
+    }
 
     UINT this_present_id;
     if (dxgi.swap_chain->GetLastPresentCount(&this_present_id) == S_OK) {
@@ -603,27 +786,20 @@ static void gfx_dxgi_swap_buffers_end(void) {
     QueryPerformanceCounter(&t0);
     QueryPerformanceCounter(&t1);
 
-    if (dxgi.applied_maximum_frame_latency > dxgi.maximum_frame_latency ||
-        dxgi.is_vsync_enabled != CVarGetInteger("gVsyncEnabled", 1)) {
-        // There seems to be a bug that if latency is decreased, there is no effect of that operation, so recreate
-        // swap chain
+    if (dxgi.applied_maximum_frame_latency > dxgi.maximum_frame_latency) {
+        // If latency is decreased, you have to wait the same amout of times as the old latency was set to
+        int times_to_wait = dxgi.applied_maximum_frame_latency;
+        int latency = dxgi.maximum_frame_latency;
+        dxgi.maximum_frame_latency = 1;
+        apply_maximum_frame_latency(false);
         if (dxgi.waitable_object != nullptr) {
-            if (!dxgi.dropped_frame) {
-                // Wait the last time on this swap chain
+            while (times_to_wait > 0) {
                 WaitForSingleObject(dxgi.waitable_object, INFINITE);
+                times_to_wait--;
             }
-            CloseHandle(dxgi.waitable_object);
-            dxgi.waitable_object = nullptr;
         }
-
-        dxgi.before_destroy_swap_chain_fn();
-        dxgi.swap_chain.Reset();
-        dxgi.is_vsync_enabled = CVarGetInteger("gVsyncEnabled", 1);
-        gfx_dxgi_create_swap_chain(dxgi.swap_chain_device.Get(), move(dxgi.before_destroy_swap_chain_fn));
-
-        dxgi.frame_timestamp = 0;
-        dxgi.frame_stats.clear();
-        dxgi.pending_frame_stats.clear();
+        dxgi.maximum_frame_latency = latency;
+        apply_maximum_frame_latency(false);
 
         return; // Make sure we don't wait a second time on the waitable object, since that would hang the program
     } else if (dxgi.applied_maximum_frame_latency != dxgi.maximum_frame_latency) {
@@ -720,8 +896,8 @@ void gfx_dxgi_create_swap_chain(IUnknown* device, std::function<void()>&& before
         dxgi.dxgi1_4 ? DXGI_SWAP_EFFECT_FLIP_DISCARD : // Introduced in DXGI 1.4 and Windows 10
             DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL; // Apparently flip sequential was also backported to Win 7 Platform Update
     swap_chain_desc.Flags = dxgi_13 ? DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT : 0;
-    if (dxgi.tearing_support && !dxgi.is_vsync_enabled) {
-        swap_chain_desc.Flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+    if (dxgi.tearing_support) {
+        swap_chain_desc.Flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING; // Now we can use DXGI_PRESENT_ALLOW_TEARING
     }
     swap_chain_desc.SampleDesc.Count = 1;
 

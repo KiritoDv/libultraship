@@ -136,10 +136,6 @@ void Gui::Init(GuiWindowInitData windowImpl) {
     ImGui::GetStyle().ScaleAllSizes(2);
 #endif
 
-    if (Context::GetInstance()->GetWindow()->IsFullscreen()) {
-        Context::GetInstance()->GetWindow()->SetCursorVisibility(GetMenuBar() && GetMenuBar()->IsVisible());
-    }
-
     CVarClear("gNewFileDropped");
     CVarClear("gDroppedFile");
 
@@ -388,13 +384,18 @@ void Gui::DrawMenu() {
     gfx_current_game_window_viewport.width = (int16_t)size.x;
     gfx_current_game_window_viewport.height = (int16_t)size.y;
 
+    if (CVarGetInteger("gAdvancedResolution.Enabled", 0)) {
+        ApplyResolutionChanges();
+    }
+
     switch (CVarGetInteger("gLowResMode", 0)) {
         case 1: { // N64 Mode
             gfx_current_dimensions.width = 320;
             gfx_current_dimensions.height = 240;
+            /*
             const int sw = size.y * 320 / 240;
             gfx_current_game_window_viewport.x += ((int)size.x - sw) / 2;
-            gfx_current_game_window_viewport.width = sw;
+            gfx_current_game_window_viewport.width = sw;*/
             break;
         }
         case 2: { // 240p Widescreen
@@ -463,14 +464,142 @@ void Gui::ImGuiWMNewFrame() {
     }
 }
 
+void Gui::ApplyResolutionChanges() {
+    ImVec2 size = ImGui::GetContentRegionAvail();
+
+    const float aspectRatioX = CVarGetFloat("gAdvancedResolution.AspectRatioX", 16.0f);
+    const float aspectRatioY = CVarGetFloat("gAdvancedResolution.AspectRatioY", 9.0f);
+    const uint32_t verticalPixelCount = CVarGetInteger("gAdvancedResolution.VerticalPixelCount", 480);
+    const bool verticalResolutionToggle = CVarGetInteger("gAdvancedResolution.VerticalResolutionToggle", 0);
+
+    const bool aspectRatioIsEnabled = (aspectRatioX > 0.0f) && (aspectRatioY > 0.0f);
+
+    const uint32_t minResolutionWidth = 320;
+    const uint32_t minResolutionHeight = 240;
+    const uint32_t maxResolutionWidth = 8096;  // the renderer's actual limit is 16384
+    const uint32_t maxResolutionHeight = 4320; // on either axis. if you have the VRAM for it.
+    uint32_t newWidth = gfx_current_dimensions.width;
+    uint32_t newHeight = gfx_current_dimensions.height;
+
+    if (verticalResolutionToggle) { // Use fixed vertical resolution
+        if (aspectRatioIsEnabled) {
+            newWidth = uint32_t(float(verticalPixelCount / aspectRatioY) * aspectRatioX);
+        } else {
+            newWidth = uint32_t(float(verticalPixelCount * size.x / size.y));
+        }
+        newHeight = verticalPixelCount;
+    } else { // Use the window's resolution
+        if (aspectRatioIsEnabled) {
+            if (((float)gfx_current_game_window_viewport.height / gfx_current_game_window_viewport.width) <
+                (aspectRatioY / aspectRatioX)) {
+                // when pillarboxed
+                newWidth = uint32_t(float(gfx_current_dimensions.height / aspectRatioY) * aspectRatioX);
+            } else { // when letterboxed
+                newHeight = uint32_t(float(gfx_current_dimensions.width / aspectRatioX) * aspectRatioY);
+            }
+        } // else, having both options turned off does nothing.
+    }
+    // clamp values to prevent renderer crash
+    if (newWidth < minResolutionWidth) {
+        newWidth = minResolutionWidth;
+    }
+    if (newHeight < minResolutionHeight) {
+        newHeight = minResolutionHeight;
+    }
+    if (newWidth > maxResolutionWidth) {
+        newWidth = maxResolutionWidth;
+    }
+    if (newHeight > maxResolutionHeight) {
+        newHeight = maxResolutionHeight;
+    }
+    // apply new dimensions
+    gfx_current_dimensions.width = newWidth;
+    gfx_current_dimensions.height = newHeight;
+    // centring the image is done in Gui::StartFrame().
+}
+
+int16_t Gui::GetIntegerScaleFactor() {
+    if (!CVarGetInteger("gAdvancedResolution.IntegerScale.FitAutomatically", 0)) {
+        int16_t factor = CVarGetInteger("gAdvancedResolution.IntegerScale.Factor", 1);
+
+        if (CVarGetInteger("gAdvancedResolution.IntegerScale.NeverExceedBounds", 1)) {
+            // Screen bounds take priority over whatever Factor is set to.
+
+            // The same comparison as below, but checked against the configured factor
+            if (((float)gfx_current_game_window_viewport.height / gfx_current_game_window_viewport.width) <
+                ((float)gfx_current_dimensions.height / gfx_current_dimensions.width)) {
+                if (factor > gfx_current_game_window_viewport.height / gfx_current_dimensions.height) {
+                    // Scale to window height
+                    factor = gfx_current_game_window_viewport.height / gfx_current_dimensions.height;
+                }
+            } else {
+                if (factor > gfx_current_game_window_viewport.width / gfx_current_dimensions.width) {
+                    // Scale to window width
+                    factor = gfx_current_game_window_viewport.width / gfx_current_dimensions.width;
+                }
+            }
+        }
+
+        if (factor < 1) {
+            factor = 1;
+        }
+        return factor;
+    } else { // Skip the preferred value and automatically determine from window size
+        int16_t factor = 1;
+
+        // Compare aspect ratios of game framebuffer and GUI
+        if (((float)gfx_current_game_window_viewport.height / gfx_current_game_window_viewport.width) <
+            ((float)gfx_current_dimensions.height / gfx_current_dimensions.width)) {
+            // Scale to window height
+            factor = gfx_current_game_window_viewport.height / gfx_current_dimensions.height;
+        } else {
+            // Scale to window width
+            factor = gfx_current_game_window_viewport.width / gfx_current_dimensions.width;
+        }
+
+        // Add screen bounds offset, if set.
+        factor += CVarGetInteger("gAdvancedResolution.IntegerScale.ExceedBoundsBy", 0);
+
+        if (factor < 1) {
+            factor = 1;
+        }
+        return factor;
+    }
+}
+
 void Gui::StartFrame() {
     const ImVec2 mainPos = ImGui::GetWindowPos();
     ImVec2 size = ImGui::GetContentRegionAvail();
     ImVec2 pos = ImVec2(0, 0);
-    if (CVarGetInteger("gLowResMode", 0) == 1) {
+    if (CVarGetInteger("gLowResMode", 0) == 1) { // N64 Mode takes priority
         const float sw = size.y * 320.0f / 240.0f;
         pos = ImVec2(size.x / 2 - sw / 2, 0);
         size = ImVec2(sw, size.y);
+    } else if (CVarGetInteger("gAdvancedResolution.Enabled", 0)) {
+        if (!CVarGetInteger("gAdvancedResolution.PixelPerfectMode", 0)) {
+            if (!CVarGetInteger("gAdvancedResolution.IgnoreAspectCorrection", 0)) {
+                float sWdth = size.y * gfx_current_dimensions.width / gfx_current_dimensions.height;
+                float sHght = size.x * gfx_current_dimensions.height / gfx_current_dimensions.width;
+                float sPosX = size.x / 2 - sWdth / 2;
+                float sPosY = size.y / 2 - sHght / 2;
+                if (sPosY < 0.0f) { // pillarbox
+                    sPosY = 0.0f;   // clamp y position
+                    sHght = size.y; // reset height
+                }
+                if (sPosX < 0.0f) { // letterbox
+                    sPosX = 0.0f;   // clamp x position
+                    sWdth = size.x; // reset width
+                }
+                pos = ImVec2(sPosX, sPosY);
+                size = ImVec2(sWdth, sHght);
+            }
+        } else { // in pixel perfect mode it's much easier
+            const int factor = GetIntegerScaleFactor();
+            float sPosX = size.x / 2 - (gfx_current_dimensions.width * factor) / 2;
+            float sPosY = size.y / 2 - (gfx_current_dimensions.height * factor) / 2;
+            pos = ImVec2(sPosX, sPosY);
+            size = ImVec2(float(gfx_current_dimensions.width) * factor, float(gfx_current_dimensions.height) * factor);
+        }
     }
     if (gfxFramebuffer) {
         ImGui::SetCursorPos(pos);
@@ -601,25 +730,37 @@ void Gui::LoadGuiTexture(const std::string& name, const std::string& path, const
     std::vector<uint8_t> texBuffer;
     texBuffer.reserve(res->Width * res->Height * 4);
 
-    switch (res->Type) {
-        case LUS::TextureType::RGBA32bpp:
-            texBuffer.assign(res->ImageData, res->ImageData + (res->Width * res->Height * 4));
-            break;
-        case LUS::TextureType::GrayscaleAlpha8bpp:
-            for (int32_t i = 0; i < res->Width * res->Height; i++) {
-                uint8_t ia = res->ImageData[i];
-                uint8_t color = ((ia >> 4) & 0xF) * 255 / 15;
-                uint8_t alpha = (ia & 0xF) * 255 / 15;
-                texBuffer.push_back(color);
-                texBuffer.push_back(color);
-                texBuffer.push_back(color);
-                texBuffer.push_back(alpha);
-            }
-            break;
-        default:
+    // For HD textures we need to load the buffer raw (similar to inside gfx_pp)
+    if ((res->Flags & TEX_FLAG_LOAD_AS_RAW) != 0) {
+        // Raw loading doesn't support TLUT textures
+        if (res->Type == LUS::TextureType::Palette4bpp || res->Type == LUS::TextureType::Palette8bpp) {
             // TODO convert other image types
-            SPDLOG_WARN("ImGui::ResourceLoad: Attempting to load unsupporting image type %s", path.c_str());
+            SPDLOG_WARN("ImGui::ResourceLoad: Attempting to load unsupported image type %s", path.c_str());
             return;
+        }
+
+        texBuffer.assign(res->ImageData, res->ImageData + (res->Width * res->Height * 4));
+    } else {
+        switch (res->Type) {
+            case LUS::TextureType::RGBA32bpp:
+                texBuffer.assign(res->ImageData, res->ImageData + (res->Width * res->Height * 4));
+                break;
+            case LUS::TextureType::GrayscaleAlpha8bpp:
+                for (int32_t i = 0; i < res->Width * res->Height; i++) {
+                    uint8_t ia = res->ImageData[i];
+                    uint8_t color = ((ia >> 4) & 0xF) * 255 / 15;
+                    uint8_t alpha = (ia & 0xF) * 255 / 15;
+                    texBuffer.push_back(color);
+                    texBuffer.push_back(color);
+                    texBuffer.push_back(color);
+                    texBuffer.push_back(alpha);
+                }
+                break;
+            default:
+                // TODO convert other image types
+                SPDLOG_WARN("ImGui::ResourceLoad: Attempting to load unsupported image type %s", path.c_str());
+                return;
+        }
     }
 
     for (size_t pixel = 0; pixel < texBuffer.size() / 4; pixel++) {
@@ -654,6 +795,10 @@ void Gui::SetMenuBar(std::shared_ptr<GuiMenuBar> menuBar) {
 
     if (GetMenuBar()) {
         GetMenuBar()->Init();
+    }
+
+    if (Context::GetInstance()->GetWindow()->IsFullscreen()) {
+        Context::GetInstance()->GetWindow()->SetCursorVisibility(GetMenuBar() && GetMenuBar()->IsVisible());
     }
 }
 
