@@ -51,7 +51,7 @@ class Controller {
     virtual int32_t SetLedColor(int32_t portIndex, Color_RGB8 color) = 0;
 
     std::string GetControllerName();
-    void ReadToPad(OSContPad* pad, int32_t portIndex);
+    virtual void ReadToPad(OSContPad* pad, int32_t portIndex);
     void SetButtonMapping(int32_t portIndex, int32_t deviceButtonId, int32_t n64bitmask);
 
     std::shared_ptr<DeviceProfile> GetProfile(int32_t portIndex);
