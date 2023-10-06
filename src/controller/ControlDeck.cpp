@@ -25,8 +25,8 @@ ControlDeck::~ControlDeck() {
 }
 
 void ControlDeck::Init(uint8_t* bits) {
-    ScanDevices();
     mControllerBits = bits;
+    ScanDevices();
 }
 
 void ControlDeck::ScanDevices() {
@@ -123,23 +123,6 @@ void ControlDeck::LoadSettings() {
     std::shared_ptr<Config> config = Context::GetInstance()->GetConfig();
 
     auto json = config->GetNestedJson();
-    for (auto const& val : json["Controllers"]["Deck"].items()) {
-        int32_t slot = std::stoi(val.key().substr(5));
-
-        for (size_t dev = 0; dev < mDevices.size(); dev++) {
-            std::string guid = mDevices[dev]->GetGuid();
-            if (guid != val.value().get<std::string>()) {
-                continue;
-            }
-
-            mPortList[slot] = dev;
-        }
-    }
-
-    for (size_t i = 0; i < mPortList.size(); i++) {
-        std::shared_ptr<Controller> backend = mDevices[mPortList[i]];
-        config->SetString(StringHelper::Sprintf("Controllers.Deck.Slot_%d", (int32_t)i), backend->GetGuid());
-    }
 
     for (const auto& device : mDevices) {
         std::string guid = device->GetGuid();
@@ -234,6 +217,19 @@ void ControlDeck::LoadSettings() {
                     device->CreateDefaultBinding(virtualSlot);
                     break;
             }
+        }
+    }
+
+    for (auto const& val : json["Controllers"]["Deck"].items()) {
+        int32_t slot = std::stoi(val.key().substr(5));
+
+        for (size_t dev = 0; dev < mDevices.size(); dev++) {
+            std::string guid = mDevices[dev]->GetGuid();
+            if (guid != val.value().get<std::string>()) {
+                continue;
+            }
+
+            this->SetDeviceToPort(slot, dev);
         }
     }
 }
