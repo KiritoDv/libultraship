@@ -6,6 +6,8 @@
 #include "Utils/StringHelper.h"
 #include <StrHash64.h>
 #include <filesystem>
+
+#include "Context.h"
 #include "utils/binarytools/MemoryStream.h"
 #include "utils/binarytools/FileHelper.h"
 
@@ -78,8 +80,9 @@ std::shared_ptr<File> Archive::LoadFileFromHandle(const std::string& filePath, b
     }
 
 #if _DEBUG
-    if (FileHelper::Exists("TestData/" + filePath)) {
-        auto byteData = FileHelper::ReadAllBytes("TestData/" + filePath);
+    const auto test_path = LUS::Context::GetPathRelativeToAppBundle("TestData/" + filePath);
+    if (FileHelper::Exists(test_path)) {
+        auto byteData = FileHelper::ReadAllBytes(test_path);
         fileToLoad->Buffer.resize(byteData.size() + 1);
         memcpy(fileToLoad->Buffer.data(), byteData.data(), byteData.size() + 1);
 
