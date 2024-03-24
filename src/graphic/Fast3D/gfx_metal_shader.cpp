@@ -419,7 +419,7 @@ MTL::VertexDescriptor* gfx_metal_build_shader(char buf[4096], size_t& num_floats
 
     if (cc_features.opt_alpha) {
         if (cc_features.opt_alpha_threshold) {
-            append_line(buf, &len, "    if (texel.w < 8.0 / 256.0) discard_fragment();");
+            // append_line(buf, &len, "    if (texel.w < 8.0 / 256.0) discard_fragment();");
         }
         if (cc_features.opt_invisible) {
             append_line(buf, &len, "    texel.w = 0.0;");

@@ -1820,7 +1820,7 @@ typedef union {
  *        | |seg|          address            |
  *        +-+---+-----------------------------+
  */
-#define gSPVertex(pkt, v, n, v0) gDma1p((pkt), G_VTX, (v), ((n) << 10) | (sizeof(Vtx) * (n)-1), (v0) * 2)
+#define __gSPVertex(pkt, v, n, v0) gDma1p((pkt), G_VTX, (v), ((n) << 10) | (sizeof(Vtx) * (n)-1), (v0) * 2)
 #define gsSPVertex(v, n, v0) gsDma1p(G_VTX, (v), ((n) << 10) | (sizeof(Vtx) * (n)-1), (v0) * 2)
 #else
 #define __gSPVertex(pkt, v, n, v0) gDma1p(pkt, G_VTX, v, sizeof(Vtx) * (n), ((n)-1) << 4 | (v0))
@@ -1960,7 +1960,8 @@ typedef union {
     (((flag) == 0)   ? __gsSP1Triangle_w1(v0, v1, v2) \
      : ((flag) == 1) ? __gsSP1Triangle_w1(v1, v2, v0) \
                      : __gsSP1Triangle_w1(v2, v0, v1))
-#define __gsSPLine3D_w1(v0, v1, wd) (_SHIFTL((v0) * 2, 16, 8) | _SHIFT((v1) * 2, 8, 8) | _SHIFT((wd), 0, 8))
+#  define __gsSPLine3D_w1(v0, v1, wd)				\
+(_SHIFTL((v0)*2,16,8)|_SHIFTL((v1)*2,8,8)|_SHIFTL((wd),0,8))
 #define __gsSPLine3D_w1f(v0, v1, wd, flag) (((flag) == 0) ? __gsSPLine3D_w1(v0, v1, wd) : __gsSPLine3D_w1(v1, v0, wd))
 #define __gsSP1Quadrangle_w1f(v0, v1, v2, v3, flag)   \
     (((flag) == 0)   ? __gsSP1Triangle_w1(v0, v1, v2) \

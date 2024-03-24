@@ -1746,11 +1746,10 @@ static void gfx_sp_movemem(uint8_t index, uint8_t offset, const void* data) {
         case G_MV_VIEWPORT:
             gfx_calc_and_set_viewport((const Vp_t*)data);
             break;
-#if 0
+#ifndef F3DEX_GBI_2
         case G_MV_LOOKATY:
         case G_MV_LOOKATX:
-            memcpy(g_rsp.current_lookat + (index - G_MV_LOOKATY) / 2, data, sizeof(Light_t));
-            //g_rsp.lights_changed = 1;
+            memcpy(g_rsp.lookat + (index - G_MV_LOOKATY) / 2, data, sizeof(Light_t));
             break;
 #endif
 #ifdef F3DEX_GBI_2
@@ -2622,7 +2621,7 @@ static void gfx_step(GfxExecStack& exec_stack) {
 #ifdef F3DEX_GBI_2
             gfx_sp_vertex(C0(12, 8), C0(1, 7) - C0(12, 8), (const Vtx*)seg_addr(cmd->words.w1));
 #elif defined(F3DEX_GBI) || defined(F3DLP_GBI)
-            gfx_sp_vertex(C0(10, 6), C0(16, 8) / 2, seg_addr(cmd->words.w1));
+            gfx_sp_vertex(C0(10, 6), C0(16, 8) / 2, (const Vtx*)seg_addr(cmd->words.w1));
 #else
             gfx_sp_vertex((C0(0, 16)) / sizeof(Vtx), C0(16, 4), (const Vtx*)seg_addr(cmd->words.w1));
 #endif

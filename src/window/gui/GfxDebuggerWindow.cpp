@@ -26,7 +26,7 @@ void GfxDebuggerWindow::UpdateElement() {
 static const char* GetOpName(uint32_t op) {
     switch (op) {
 #define CASE(x) \
-    case x:     \
+    case (uint8_t)x:     \
         return #x
 
         CASE(G_RDPHALF_1);
@@ -173,7 +173,7 @@ void GfxDebuggerWindow::DrawDisasNode(const Gfx* cmd, std::vector<const Gfx*>& g
 #ifdef F3DEX_GBI_2
             gfxd_target(gfxd_f3dex2);
 #else
-            gfxd_target(gfxd_f3d);
+            gfxd_target(gfxd_f3dex);
 #endif
             gfxd_execute();
 

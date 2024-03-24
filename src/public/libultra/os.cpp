@@ -1,4 +1,6 @@
 #include "libultraship/libultraship.h"
+#include "libultraship/src/Context.h"
+
 #include <SDL2/SDL.h>
 
 extern "C" {
@@ -47,4 +49,51 @@ uint32_t osGetCount(void) {
     return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
         .count();
 }
+
+s32 osEepromProbe(OSMesgQueue *) {
+    return 0;
 }
+s32 osEepromRead(OSMesgQueue *, u8, u8 *) {
+    return 0;
+}
+s32 osEepromWrite(OSMesgQueue *, u8, u8 *) {
+    return 0;
+}
+s32 osEepromLongRead(OSMesgQueue *, u8, u8 *, int) {
+    return 0;
+}
+s32 osEepromLongWrite(OSMesgQueue *, u8, u8 *, int) {
+    return 0;
+}
+
+int osSetTimer(OSTimer* t, OSTime countdown, OSTime interval, OSMesgQueue* mq, OSMesg msg){
+    return 0;
+}
+
+OSPiHandle *osCartRomInit(void) {
+    return NULL;
+}
+
+s32 osEPiStartDma(OSPiHandle *pihandle, OSIoMesg *mb, s32 direction) {
+    return 0;
+}
+
+u32 osAiGetLength() {
+    // TODO: Implement
+    return 0;
+}
+
+s32 osAiSetNextBuffer(void *buff, u32 len) {
+    // TODO: Implement
+    return 0;
+}
+
+s32 __osMotorAccess(OSPfs* pfs, u32 vibrate) {
+    return 0;
+}
+
+s32 osMotorInit(OSMesgQueue* ctrlrqueue, OSPfs* pfs, s32 channel) {
+    return 0;
+}
+}
+
