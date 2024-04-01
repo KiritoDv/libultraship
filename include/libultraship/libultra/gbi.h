@@ -1800,7 +1800,7 @@ typedef union {
  *        | |seg|         address             |
  *        +-+---+-----------------------------+
  */
-#define gSPVertex(pkt, v, n, v0)                                                                \
+#define __gSPVertex(pkt, v, n, v0)                                                                \
     {                                                                                           \
         Gfx* _g = (Gfx*)(pkt);                                                                  \
         _g->words.w0 = _SHIFTL(G_VTX, 24, 8) | _SHIFTL((n), 12, 8) | _SHIFTL((v0) + (n), 1, 7); \

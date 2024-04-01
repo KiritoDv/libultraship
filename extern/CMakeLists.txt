@@ -1,3 +1,5 @@
+include(FetchContent)
+
 find_package(OpenGL QUIET)
 
 if (CMAKE_SYSTEM_NAME MATCHES "Windows")
@@ -97,7 +99,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     find_package(GLEW REQUIRED)
     target_link_libraries(ImGui PUBLIC ${OPENGL_opengl_LIBRARY} GLEW::GLEW)
     set_target_properties(ImGui PROPERTIES
-        XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES 
+        XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC YES
     )
 elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     find_package(GLEW REQUIRED)
@@ -139,3 +141,27 @@ set(THREADPOOL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/thread-pool)
 add_library(ThreadPool INTERFACE)
 
 target_include_directories(ThreadPool INTERFACE ${THREADPOOL_DIR})
+
+#=================== libgfxd ===================
+
+# Link libgfxd
+# Because libgfxd is not a CMake project, we have to manually fetch it and add it to the build
+
+FetchContent_Declare(
+    libgfxd
+    GIT_REPOSITORY https://github.com/glankk/libgfxd.git
+    GIT_TAG 96fd3b849f38b3a7c7b7f3ff03c5921d328e6cdf
+)
+
+FetchContent_GetProperties(libgfxd)
+
+if(NOT libgfxd_POPULATED)
+    FetchContent_Populate(libgfxd)
+    include_directories(${libgfxd_SOURCE_DIR})
+    set(LGFXD_SRC gfxd.c uc_f3d.c uc_f3db.c uc_f3dex.c uc_f3dexb.c uc_f3dex2.c)
+    foreach (LGFXD_FILE ${LGFXD_SRC})
+        list(APPEND LGFXD_FILES "${libgfxd_SOURCE_DIR}/${LGFXD_FILE}")
+    endforeach()
+endif()
+
+add_library(libgfxd STATIC ${LGFXD_FILES})

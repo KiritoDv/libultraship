@@ -1,4 +1,5 @@
 #include "GfxDebuggerWindow.h"
+#include <gfxd.h>
 #include <ImGui/imgui.h>
 #include <spdlog/spdlog.h>
 #include "Context.h"
@@ -7,8 +8,6 @@
 #include <spdlog/fmt/fmt.h>
 #include "libultraship/bridge.h"
 #include <graphic/Fast3D/gfx_pc.h>
-
-#include "_deps/libgfxd-src/gfxd.h"
 
 extern uintptr_t gSegmentPointers[16];
 
@@ -173,7 +172,7 @@ void GfxDebuggerWindow::DrawDisasNode(const Gfx* cmd, std::vector<const Gfx*>& g
 #ifdef F3DEX_GBI_2
             gfxd_target(gfxd_f3dex2);
 #else
-            gfxd_target(gfxd_f3dex);
+            gfxd_target(gfxd_f3dex2);
 #endif
             gfxd_execute();
 
