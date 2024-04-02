@@ -170,9 +170,9 @@ void GfxDebuggerWindow::DrawDisasNode(const Gfx* cmd, std::vector<const Gfx*>& g
             gfxd_output_buffer(buff, sizeof(buff));
             gfxd_enable(gfxd_emit_dec_color);
 #ifdef F3DEX_GBI_2
-            gfxd_target(gfxd_f3dex2);
+            // gfxd_target(gfxd_f3dex2);
 #else
-            gfxd_target(gfxd_f3dex2);
+            gfxd_target(gfxd_f3dex);
 #endif
             gfxd_execute();
 

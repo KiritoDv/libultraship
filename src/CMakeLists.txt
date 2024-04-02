@@ -445,6 +445,9 @@ endif()
 
 #=================== libgfxd ===================
 
+# Link libgfxd
+# Because libgfxd is not a CMake project, we have to manually fetch it and add it to the build
+
 FetchContent_Declare(
     libgfxd
     GIT_REPOSITORY https://github.com/glankk/libgfxd.git
@@ -455,15 +458,16 @@ FetchContent_GetProperties(libgfxd)
 
 if(NOT libgfxd_POPULATED)
     FetchContent_Populate(libgfxd)
-    set(LGFXD_SRC gfxd.c uc_f3d.c uc_f3db.c uc_f3dex.c uc_f3dexb.c uc_f3dex2.c)
+    include_directories(${libgfxd_SOURCE_DIR})
+    set(LGFXD_SRC gfxd.c uc_f3d.c uc_f3db.c uc_f3dex.c uc_f3dexb.c)
     foreach (LGFXD_FILE ${LGFXD_SRC})
         list(APPEND LGFXD_FILES "${libgfxd_SOURCE_DIR}/${LGFXD_FILE}")
     endforeach()
 endif()
 
 source_group("Source Files\\Libraries\\libgfxd" FILES ${LGFXD_FILES})
-
 target_sources(libultraship PRIVATE ${libgfxd_SOURCE_DIR} ${LGFXD_FILES})
+
 
 #=================== Packages & Includes ===================
 
