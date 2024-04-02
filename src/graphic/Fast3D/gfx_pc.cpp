@@ -1899,7 +1899,7 @@ static void gfx_dp_load_block(uint8_t tile, uint32_t uls, uint32_t ult, uint32_t
     SUPPORT_CHECK(ult == 0);
 
     // The lrs field rather seems to be number of pixels to load
-    uint32_t word_size_shift = 0;
+    int32_t word_size_shift = 0;
     switch (g_rdp.texture_to_load.siz) {
         case G_IM_SIZ_4b:
             word_size_shift = -1;
@@ -1914,7 +1914,7 @@ static void gfx_dp_load_block(uint8_t tile, uint32_t uls, uint32_t ult, uint32_t
             word_size_shift = 2;
             break;
     }
-    uint32_t orig_size_bytes = word_size_shift > 0 ? (lrs + 1) << word_size_shift : (lrs + 1) >> (-word_size_shift);
+    int32_t orig_size_bytes = word_size_shift > 0 ? (lrs + 1) << word_size_shift : (lrs + 1) >> (-word_size_shift);
     uint32_t size_bytes = orig_size_bytes;
     if (g_rdp.texture_to_load.raw_tex_metadata.h_byte_scale != 1 ||
         g_rdp.texture_to_load.raw_tex_metadata.v_pixel_scale != 1) {
