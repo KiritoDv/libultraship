@@ -2621,7 +2621,7 @@ static void gfx_step(GfxExecStack& exec_stack) {
 #ifdef F3DEX_GBI_2
             gfx_sp_vertex(C0(12, 8), C0(1, 7) - C0(12, 8), (const Vtx*)seg_addr(cmd->words.w1));
 #elif defined(F3DEX_GBI) || defined(F3DLP_GBI)
-            gfx_sp_vertex(C0(10, 6), C0(16, 8) / 2, (const Vtx*)seg_addr(cmd->words.w1));
+            gfx_sp_vertex(C0(10, 6), C0(17, 7), (const Vtx*)seg_addr(cmd->words.w1));
 #else
             gfx_sp_vertex((C0(0, 16)) / sizeof(Vtx), C0(16, 4), (const Vtx*)seg_addr(cmd->words.w1));
 #endif
@@ -2797,7 +2797,7 @@ static void gfx_step(GfxExecStack& exec_stack) {
 #ifdef F3DEX_GBI_2
             gfx_sp_tri1(C0(16, 8) / 2, C0(8, 8) / 2, C0(0, 8) / 2, false);
 #elif defined(F3DEX_GBI) || defined(F3DLP_GBI)
-            gfx_sp_tri1(C1(16, 8) / 2, C1(8, 8) / 2, C1(0, 8) / 2, false);
+            gfx_sp_tri1(C1(17, 7), C1(9, 7), C1(1, 7), false);
 #else
             gfx_sp_tri1(C1(16, 8) / 10, C1(8, 8) / 10, C1(0, 8) / 10, false);
 #endif
@@ -2809,8 +2809,10 @@ static void gfx_step(GfxExecStack& exec_stack) {
 #endif
 #if defined(F3DEX_GBI) || defined(F3DLP_GBI)
         case (uint8_t)G_TRI2:
-            gfx_sp_tri1(C0(16, 8) / 2, C0(8, 8) / 2, C0(0, 8) / 2, false);
-            gfx_sp_tri1(C1(16, 8) / 2, C1(8, 8) / 2, C1(0, 8) / 2, false);
+            gfx_sp_tri1(C0(17, 7), C0(9, 7), C0(1, 7), false);
+            gfx_sp_tri1(C1(17, 7), C1(9, 7), C1(1, 7), false);
+            // gfx_sp_tri1(C0(16, 8) / 2, C0(8, 8) / 2, C0(0, 8) / 2, false);
+            // gfx_sp_tri1(C1(16, 8) / 2, C1(8, 8) / 2, C1(0, 8) / 2, false);
             break;
 #endif
         case (uint8_t)G_SETOTHERMODE_L:
