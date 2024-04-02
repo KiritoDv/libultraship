@@ -569,6 +569,8 @@ static struct ShaderProgram* gfx_opengl_create_and_load_new_shader(uint64_t shad
         append_line(fs_buf, &fs_len, "gl_FragColor = vec4(texel, 1.0);");
 #endif
     }
+    append_line(fs_buf, &fs_len, "float gamma = 1.5;");
+    append_line(fs_buf, &fs_len, "outColor.rgb = pow(outColor.rgb, vec3(1.0/gamma));");
     append_line(fs_buf, &fs_len, "}");
 
     vs_buf[vs_len] = '\0';
