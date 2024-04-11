@@ -118,6 +118,13 @@ struct RawTexMetadata {
 #define MAX_LIGHTS 32
 #define MAX_VERTICES 64
 
+enum class TextureMod {
+    NONE = 0,
+    SCROLL = 1 << 0,
+    MOTTLE = 1 << 1,
+    GAMMA  = 1 << 2,
+};
+
 struct RSP {
     float modelview_matrix_stack[11][4][4];
     uint8_t modelview_matrix_stack_size;
@@ -141,6 +148,14 @@ struct RSP {
         // U0.16
         uint16_t s, t;
     } texture_scaling_factor;
+
+    struct {
+        uint32_t modes;
+        int32_t frame_count;
+        struct {
+            float x, y, z;
+        } pos;
+    } texture_mods;
 
     struct LoadedVertex loaded_vertices[MAX_VERTICES + 4];
 };

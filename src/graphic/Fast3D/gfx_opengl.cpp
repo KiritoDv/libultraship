@@ -314,6 +314,24 @@ static struct ShaderProgram* gfx_opengl_create_and_load_new_shader(uint64_t shad
         num_floats += 4;
     }
 
+    if(cc_features.opt_texture_mods) {
+#if defined(__APPLE__) || defined(USE_OPENGLES)
+        append_line(vs_buf, &vs_len, "in vec3 aTexModData;");
+        append_line(vs_buf, &vs_len, "out vec3 vTexModData;");
+
+        append_line(vs_buf, &vs_len, "in vec3 aTexModPos;");
+        append_line(vs_buf, &vs_len, "out vec3 vTexModPos;");
+#else
+        append_line(vs_buf, &vs_len, "attribute vec3 aTexModData;");
+        append_line(vs_buf, &vs_len, "varying vec3 vTexModData;");
+
+        append_line(vs_buf, &vs_len, "attribute vec3 aTexModPos;");
+        append_line(vs_buf, &vs_len, "varying vec3 vTexModPos;");
+#endif
+
+        num_floats += 6;
+    }
+
     for (int i = 0; i < cc_features.num_inputs; i++) {
 #if defined(__APPLE__) || defined(USE_OPENGLES)
         vs_len += sprintf(vs_buf + vs_len, "in vec%d aInput%d;\n", cc_features.opt_alpha ? 4 : 3, i + 1);
@@ -341,6 +359,10 @@ static struct ShaderProgram* gfx_opengl_create_and_load_new_shader(uint64_t shad
     }
     if (cc_features.opt_grayscale) {
         append_line(vs_buf, &vs_len, "vGrayscaleColor = aGrayscaleColor;");
+    }
+    if(cc_features.opt_texture_mods) {
+        append_line(vs_buf, &vs_len, "vTexModData = aTexModData;");
+        append_line(vs_buf, &vs_len, "vTexModPos = aTexModPos;");
     }
     for (int i = 0; i < cc_features.num_inputs; i++) {
         vs_len += sprintf(vs_buf + vs_len, "vInput%d = aInput%d;\n", i + 1, i + 1);
@@ -387,6 +409,15 @@ static struct ShaderProgram* gfx_opengl_create_and_load_new_shader(uint64_t shad
         append_line(fs_buf, &fs_len, "in vec4 vGrayscaleColor;");
 #else
         append_line(fs_buf, &fs_len, "varying vec4 vGrayscaleColor;");
+#endif
+    }
+    if(cc_features.opt_texture_mods) {
+#if defined(__APPLE__) || defined(USE_OPENGLES)
+        append_line(fs_buf, &fs_len, "in vec3 vTexModData;");
+        append_line(fs_buf, &fs_len, "in vec3 vTexModPos;");
+#else
+        append_line(fs_buf, &fs_len, "varying vec3 vTexModData;");
+        append_line(fs_buf, &fs_len, "varying vec3 vTexModPos;");
 #endif
     }
     for (int i = 0; i < cc_features.num_inputs; i++) {
@@ -581,8 +612,8 @@ static struct ShaderProgram* gfx_opengl_create_and_load_new_shader(uint64_t shad
         append_line(fs_buf, &fs_len, "texel.rgb = mix(texel.rgb, new_texel, vGrayscaleColor.a);");
     }
 
+    append_line(fs_buf, &fs_len, "float gamma = 2.2;");
     if (cc_features.opt_alpha) {
-        append_line(fs_buf, &fs_len, "float gamma = 2.2;");
         append_line(fs_buf, &fs_len, "float alphaValue = texel.a;");
 
         if (cc_features.opt_alpha_threshold) {
@@ -605,13 +636,13 @@ static struct ShaderProgram* gfx_opengl_create_and_load_new_shader(uint64_t shad
 #endif
     }
 
-    if(cc_features.opt_gamma) {
+    append_line(fs_buf, &fs_len, "if(int(vTexModData.x) == 4) {");
 #if defined(__APPLE__) || defined(USE_OPENGLES)
     append_line(fs_buf, &fs_len, "outColor.rgb = pow(outColor.rgb, vec3(1.0 / gamma));");
 #else
     append_line(fs_buf, &fs_len, "gl_FragColor.rgb = pow(gl_FragColor.rgb, vec3(1.0 / gamma));");
 #endif
-    }
+    append_line(fs_buf, &fs_len, "}");
 
     append_line(fs_buf, &fs_len, "}");
 
@@ -696,6 +727,16 @@ static struct ShaderProgram* gfx_opengl_create_and_load_new_shader(uint64_t shad
     if (cc_features.opt_grayscale) {
         prg->attrib_locations[cnt] = glGetAttribLocation(shader_program, "aGrayscaleColor");
         prg->attrib_sizes[cnt] = 4;
+        ++cnt;
+    }
+
+    if (cc_features.opt_texture_mods) {
+        prg->attrib_locations[cnt] = glGetAttribLocation(shader_program, "aTexModData");
+        prg->attrib_sizes[cnt] = 3;
+        ++cnt;
+
+        prg->attrib_locations[cnt] = glGetAttribLocation(shader_program, "aTexModPos");
+        prg->attrib_sizes[cnt] = 3;
         ++cnt;
     }
 

@@ -28,6 +28,11 @@
 #define G_IMAGERECT 0x3c
 #define G_DL_INDEX 0x3d
 #define G_SETINTENSITY 0x40
+#define G_TEXTURE_MOD 0x41
+
+#define G_MOD_NONE 0
+#define G_MOD_SCROLL 1 << 0
+#define G_MOD_MOTTLE 1 << 1
 
 #define _DW(macro) \
     { macro }
@@ -114,6 +119,17 @@
 
 #define gsSPGrayscale(state) \
     { (_SHIFTL(G_SETGRAYSCALE, 24, 8)), (state) }
+
+#define gSPSetTextureMods(pkt, state)                  \
+    {                                                  \
+        Gfx* _g = (Gfx*)(pkt);                         \
+                                                       \
+        _g->words.w0 = _SHIFTL(G_TEXTURE_MOD, 24, 8); \
+        _g->words.w1 = state;                          \
+    }
+
+#define gsSPSetTextureMods(state) \
+    { (_SHIFTL(G_TEXTURE_MOD, 24, 8)), (state) }
 
 #define gSPDisableFiltering(pkt, state)                \
     {                                                  \

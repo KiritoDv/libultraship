@@ -1421,9 +1421,14 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
                                     (g_rdp.other_mode_l & (3 << 16)) == (G_BL_1MA << 16)
                               : (g_rdp.other_mode_l & (3 << 18)) == G_BL_1MA;
     bool use_gamma = (g_rdp.vi_mode & OS_VI_GAMMA_ON || g_rdp.vi_mode & OS_VI_GAMMA_DITHER_ON);
+    bool use_texture_mods = true; //g_rsp.texture_mods.modes != 0 || use_gamma;
 
     if (texture_edge) {
         use_alpha = true;
+    }
+
+    if(use_gamma) {
+        g_rsp.texture_mods.modes |= (uint32_t) TextureMod::GAMMA;
     }
 
     if (use_alpha) {
@@ -1461,9 +1466,6 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
     }
     if (g_rdp.loaded_texture[1].blended) {
         cc_options |= (uint64_t)SHADER_OPT_TEXEL1_BLEND;
-    }
-    if(use_gamma) {
-        cc_options |= (uint64_t)SHADER_OPT_GAMMA;
     }
 
     // If we are not using alpha, clear the alpha components of the combiner as they have no effect
@@ -1660,6 +1662,16 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
             buf_vbo[buf_vbo_len++] = g_rdp.grayscale_color.g / 255.0f;
             buf_vbo[buf_vbo_len++] = g_rdp.grayscale_color.b / 255.0f;
             buf_vbo[buf_vbo_len++] = g_rdp.grayscale_color.a / 255.0f; // lerp interpolation factor (not alpha)
+        }
+
+        if(use_texture_mods){
+            buf_vbo[buf_vbo_len++] = g_rsp.texture_mods.modes;
+            buf_vbo[buf_vbo_len++] = g_rsp.texture_mods.frame_count;
+            buf_vbo[buf_vbo_len++] = 0.0f;
+            buf_vbo[buf_vbo_len++] = g_rsp.texture_mods.pos.x;
+            buf_vbo[buf_vbo_len++] = g_rsp.texture_mods.pos.y;
+            buf_vbo[buf_vbo_len++] = g_rsp.texture_mods.pos.z;
+            int bp = 0;
         }
 
         for (int j = 0; j < num_inputs; j++) {
@@ -3428,6 +3440,13 @@ bool gfx_set_intensity_handler_custom(Gfx** cmd0) {
     return false;
 }
 
+bool gfx_texture_mod_handler_custom(Gfx** cmd0) {
+    Gfx* cmd = *cmd0;
+
+    g_rsp.texture_mods.modes = cmd->words.w1;
+    return false;
+}
+
 bool gfx_set_combine_handler_rdp(Gfx** cmd0) {
     Gfx* cmd = *cmd0;
 
@@ -3649,6 +3668,7 @@ const static std::unordered_map<uint8_t, GfxOpcodeHandlerFunc> otrHandlers = {
     { G_COPYFB, gfx_copy_fb_handler_custom },                        // G_COPYFB (0x3b)
     { G_IMAGERECT, gfx_image_rect_handler_custom },                  // G_IMAGERECT (0x3c)
     { G_SETINTENSITY, gfx_set_intensity_handler_custom },            // G_SETINTENSITY (0x40)
+    { G_TEXTURE_MOD, gfx_texture_mod_handler_custom },               // G_TEXTURE_MOD (0x41)
 };
 
 #ifdef F3DEX_GBI_2
