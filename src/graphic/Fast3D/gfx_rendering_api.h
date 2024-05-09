@@ -35,6 +35,7 @@ struct GfxRenderingAPI {
     struct GfxClipParameters (*get_clip_parameters)(void);
     void (*unload_shader)(struct ShaderProgram* old_prg);
     void (*load_shader)(struct ShaderProgram* new_prg);
+    void (*unload_all_shaders)(void);
     struct ShaderProgram* (*create_and_load_new_shader)(uint64_t shader_id0, uint32_t shader_id1);
     struct ShaderProgram* (*lookup_shader)(uint64_t shader_id0, uint32_t shader_id1);
     void (*shader_get_info)(struct ShaderProgram* prg, uint8_t* num_inputs, bool used_textures[2]);

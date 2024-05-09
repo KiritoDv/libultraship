@@ -10,6 +10,7 @@
 #include <vector>
 #include <stack>
 
+#include "gfx_cc.h"
 #include "graphic/Fast3D/lus_gbi.h"
 #include "libultraship/libultra/types.h"
 
@@ -146,6 +147,12 @@ struct RSP {
     struct LoadedVertex loaded_vertices[MAX_VERTICES + 4];
 };
 
+struct ExtStorage {
+    struct {
+        char* path;
+    } shader;
+};
+
 struct RDP {
     const uint8_t* palettes[2];
     struct {
@@ -184,7 +191,6 @@ struct RDP {
     uint32_t other_mode_l, other_mode_h;
     uint64_t combine_mode;
     bool grayscale;
-
     uint8_t prim_lod_fraction;
     struct RGBA env_color, prim_color, fog_color, fill_color, grayscale_color;
     struct XYWidthHeight viewport, scissor;
@@ -192,6 +198,10 @@ struct RDP {
     void* z_buf_address;
     void* color_image_address;
 };
+
+#ifdef __cplusplus
+extern std::vector<ExtStorage> g_shader_storage;
+#endif
 
 typedef enum Attribute {
     MTX_PROJECTION,

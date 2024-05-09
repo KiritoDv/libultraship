@@ -65,6 +65,9 @@ constexpr int8_t OTR_G_DL_INDEX = OPCODE(0x3d);
 constexpr int8_t OTR_G_READFB = OPCODE(0x3e);
 constexpr int8_t OTR_G_SETINTENSITY = OPCODE(0x40);
 
+// Extension Cmds
+constexpr int8_t EXT_G_CUSTOMSHADER = OPCODE(0x41);
+
 /*
  * The following commands are the "generated" RDP commands; the user
  * never sees them, the RSP microcode generates them.

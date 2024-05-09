@@ -189,6 +189,7 @@
 #define G_DL_INDEX 0x3d
 #define G_READFB 0x3e
 #define G_SETINTENSITY 0x40
+#define G_CUSTOMSHADER 0x41
 
 /*
  * The following commands are the "generated" RDP commands; the user
@@ -2712,6 +2713,17 @@ typedef union Gfx {
 
 #define gsSPGrayscale(state) \
     { (_SHIFTL(G_SETGRAYSCALE, 24, 8)), (state) }
+
+#define gSPBindShader(pkt, path)                       \
+    {                                                  \
+        Gfx* _g = (Gfx*)(pkt);                         \
+                                                       \
+        _g->words.w0 = _SHIFTL(G_CUSTOMSHADER, 24, 8); \
+        _g->words.w1 = path;                           \
+    }
+
+#define gsSPBindShader(path) \
+    { (_SHIFTL(G_CUSTOMSHADER, 24, 8)), (path) }
 
 #define gSPExtraGeometryMode(pkt, c, s)                                                 \
     _DW({                                                                               \

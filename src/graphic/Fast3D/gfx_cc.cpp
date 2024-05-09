@@ -17,6 +17,15 @@ void gfx_cc_get_features(uint64_t shader_id0, uint32_t shader_id1, struct CCFeat
     cc_features->opt_alpha_threshold = (shader_id1 & SHADER_OPT(ALPHA_THRESHOLD)) != 0;
     cc_features->opt_invisible = (shader_id1 & SHADER_OPT(INVISIBLE)) != 0;
     cc_features->opt_grayscale = (shader_id1 & SHADER_OPT(GRAYSCALE)) != 0;
+    cc_features->opt_shader = (shader_id1 & SHADER_OPT(SHADER)) != 0;
+
+    if (cc_features->opt_shader) {
+        for(size_t i = 0; i < 16; i++) {
+            if((shader_id1 & SHADER_BIT(SHADER_ID, i)) != 0) {
+                cc_features->shader_id |= 1 << i;
+            }
+        }
+    }
 
     cc_features->clamp[0][0] = shader_id1 & SHADER_OPT(TEXEL0_CLAMP_S);
     cc_features->clamp[0][1] = shader_id1 & SHADER_OPT(TEXEL0_CLAMP_T);

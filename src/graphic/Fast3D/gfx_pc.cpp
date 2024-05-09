@@ -82,11 +82,15 @@ struct ColorCombiner {
 
 static map<ColorCombinerKey, struct ColorCombiner> color_combiner_pool;
 static map<ColorCombinerKey, struct ColorCombiner>::iterator prev_combiner = color_combiner_pool.end();
+std::vector<ExtStorage> g_shader_storage;
+static std::map<ColorCombinerKey, uint16_t> g_storage_key_cache;
 
 static uint8_t* tex_upload_buffer = nullptr;
 
 RSP g_rsp;
 RDP g_rdp;
+ExtStorage g_ext;
+
 static struct RenderingState {
     uint8_t depth_test_and_mask; // 1: depth test, 2: depth mask
     bool decal_mode;
@@ -189,11 +193,20 @@ static std::string GetPathWithoutFileName(char* filePath) {
     return filePath;
 }
 
+#define CVAR_DEVELOPER_TOOLS(var) CVAR_PREFIX_DEVELOPER_TOOLS "." var
+
 static void gfx_flush(void) {
     if (buf_vbo_len > 0) {
         gfx_rapi->draw_triangles(buf_vbo, buf_vbo_len, buf_vbo_num_tris);
         buf_vbo_len = 0;
         buf_vbo_num_tris = 0;
+    }
+
+    if(CVarGetInteger(CVAR_DEVELOPER_TOOLS("CleanupShaderCache"), 0) == 1){
+        color_combiner_pool.clear();
+        g_storage_key_cache.clear();
+        gfx_rapi->unload_all_shaders();
+        CVarSetInteger(CVAR_DEVELOPER_TOOLS("CleanupShaderCache"), 0);
     }
 }
 
@@ -1453,6 +1466,7 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
     bool invisible =
         (g_rdp.other_mode_l & (3 << 24)) == (G_BL_0 << 24) && (g_rdp.other_mode_l & (3 << 20)) == (G_BL_CLR_MEM << 20);
     bool use_grayscale = g_rdp.grayscale;
+    bool use_shader = g_ext.shader.path != nullptr;
 
     if (texture_edge) {
         use_alpha = true;
@@ -1495,9 +1509,31 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
         cc_options |= SHADER_OPT(TEXEL1_BLEND);
     }
 
+    if (use_shader) {
+        cc_options |= SHADER_OPT(SHADER);
+    }
+
     ColorCombinerKey key;
     key.combine_mode = g_rdp.combine_mode;
     key.options = cc_options;
+
+    if (use_shader) {
+        uint16_t sId;
+
+        if(g_storage_key_cache.contains(key)) {
+            sId = g_storage_key_cache[key];
+        } else {
+            sId = g_shader_storage.size();
+            g_storage_key_cache[key] = sId;
+            g_shader_storage.push_back(g_ext);
+        }
+
+        for(size_t i = 0; i < 16; i++) {
+            if((sId & 1 << i) != 0) {
+                key.options |= SHADER_BIT(SHADER_ID, i);
+            }
+        }
+    }
 
     // If we are not using alpha, clear the alpha components of the combiner as they have no effect
     if (!use_alpha) {
@@ -3635,6 +3671,16 @@ bool gfx_spnoop_command_handler_f3dex2(F3DGfx** cmd0) {
     return false;
 }
 
+bool gfx_cshader_command_handler_custom(F3DGfx** cmd0) {
+    F3DGfx* cmd = *(cmd0);
+    g_ext.shader.path = (char*) cmd->words.w1;
+    return false;
+}
+
+const static std::unordered_map<int8_t, const std::pair<const char*, GfxOpcodeHandlerFunc>> extensionHandlers = {
+    { EXT_G_CUSTOMSHADER, { "EXT_G_CUSTOMSHADER", gfx_cshader_command_handler_custom }}
+};
+
 const static std::unordered_map<int8_t, const std::pair<const char*, GfxOpcodeHandlerFunc>> rdpHandlers = {
     { RDP_G_TEXRECT, { "G_TEXRECT", gfx_tex_rect_and_flip_handler_rdp } },           // G_TEXRECT (-28)
     { RDP_G_TEXRECTFLIP, { "G_TEXRECTFLIP", gfx_tex_rect_and_flip_handler_rdp } },   // G_TEXRECTFLIP (-27)
@@ -3779,6 +3825,11 @@ static constexpr std::array ucode_handlers = {
 };
 
 const char* GfxGetOpcodeName(int8_t opcode) {
+
+    if (extensionHandlers.contains(opcode)) {
+        return extensionHandlers.at(opcode).first;
+    }
+
     if (otrHandlers.contains(opcode)) {
         return otrHandlers.at(opcode).first;
     }
@@ -3817,7 +3868,11 @@ static void gfx_step() {
         // Instead of having a handler for each ucode for switching ucode, just check for it early and return.
     }
 
-    if (otrHandlers.contains(opcode)) {
+    if (extensionHandlers.contains(opcode)) {
+        if (extensionHandlers.at(opcode).second(&cmd)) {
+            return;
+        }
+    } else if (otrHandlers.contains(opcode)) {
         if (otrHandlers.at(opcode).second(&cmd)) {
             return;
         }

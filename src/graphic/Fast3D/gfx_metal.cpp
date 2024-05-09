@@ -341,6 +341,18 @@ static void gfx_metal_load_shader(struct ShaderProgram* new_prg) {
     mctx.shader_program = (struct ShaderProgramMetal*)new_prg;
 }
 
+static void gfx_metal_unload_all_shaders(void) {
+    for (auto& [_, prg] : mctx.shader_program_pool) {
+        for (int i = 0; i < ARRAY_COUNT(mctx.msaa_num_quality_levels); i++) {
+            if (mctx.msaa_num_quality_levels[i] == 1) {
+                prg.pipeline_state_variants[i]->release();
+            }
+        }
+    }
+
+    mctx.shader_program_pool.clear();
+}
+
 static struct ShaderProgram* gfx_metal_create_and_load_new_shader(uint64_t shader_id0, uint32_t shader_id1) {
     CCFeatures cc_features;
     gfx_cc_get_features(shader_id0, shader_id1, &cc_features);
@@ -1234,6 +1246,7 @@ struct GfxRenderingAPI gfx_metal_api = { gfx_metal_get_name,
                                          gfx_metal_get_clip_parameters,
                                          gfx_metal_unload_shader,
                                          gfx_metal_load_shader,
+                                         gfx_metal_unload_all_shaders,
                                          gfx_metal_create_and_load_new_shader,
                                          gfx_metal_lookup_shader,
                                          gfx_metal_shader_get_info,

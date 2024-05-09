@@ -55,10 +55,13 @@ enum class ShaderOpts {
     TEXEL1_MASK,
     TEXEL0_BLEND,
     TEXEL1_BLEND,
+    SHADER,
+    SHADER_ID,
     MAX
 };
 
 #define SHADER_OPT(opt) ((uint64_t)(1 << static_cast<int>(ShaderOpts::opt)))
+#define SHADER_BIT(opt, id) ((uint64_t)(1 << (static_cast<int>(ShaderOpts::opt) + id)))
 #endif
 
 struct ColorCombinerKey {
@@ -85,6 +88,8 @@ struct CCFeatures {
     bool opt_alpha_threshold;
     bool opt_invisible;
     bool opt_grayscale;
+    bool opt_shader;
+    uint16_t shader_id;
     bool used_textures[2];
     bool used_masks[2];
     bool used_blend[2];

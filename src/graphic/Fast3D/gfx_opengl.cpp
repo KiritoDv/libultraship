@@ -6,6 +6,8 @@
 #include <stdio.h>
 
 #include <map>
+#include <fstream>
+#include <sstream>
 #include <unordered_map>
 
 #ifndef _LANGUAGE_C
@@ -133,6 +135,13 @@ static void gfx_opengl_load_shader(struct ShaderProgram* new_prg) {
     gfx_opengl_set_uniforms(new_prg);
 }
 
+static void gfx_opengl_unload_all_shaders(void) {
+    for (auto& [key, prg] : shader_program_pool) {
+        glDeleteProgram(prg.opengl_program_id);
+    }
+    shader_program_pool.clear();
+}
+
 static void append_str(char* buf, size_t* len, const char* str) {
     while (*str != '\0') {
         buf[(*len)++] = *str++;
@@ -241,6 +250,19 @@ static void append_formula(char* buf, size_t* len, uint8_t c[2][4], bool do_sing
         append_str(buf, len, " + ");
         append_str(buf, len, shader_item_to_str(c[only_alpha][3], with_alpha, only_alpha, opt_alpha, false));
     }
+}
+
+std::string read_file(const std::string &file_path) {
+    const std::ifstream input_stream(file_path, std::ios_base::binary);
+
+    if (input_stream.fail()) {
+        throw std::runtime_error("Failed to open file");
+    }
+
+    std::stringstream buffer;
+    buffer << input_stream.rdbuf();
+
+    return buffer.str();
 }
 
 static struct ShaderProgram* gfx_opengl_create_and_load_new_shader(uint64_t shader_id0, uint32_t shader_id1) {
@@ -414,6 +436,13 @@ static struct ShaderProgram* gfx_opengl_create_and_load_new_shader(uint64_t shad
     append_line(fs_buf, &fs_len, "uniform int frame_count;");
     append_line(fs_buf, &fs_len, "uniform float noise_scale;");
 
+    append_line(fs_buf, &fs_len, "vec2 texSize0 = vec2(0, 0);");
+    append_line(fs_buf, &fs_len, "vec2 texSize1 = vec2(0, 0);");
+    append_line(fs_buf, &fs_len, "vec2 vTexCoordAdj0 = vec2(0, 0);");
+    append_line(fs_buf, &fs_len, "vec2 vTexCoordAdj1 = vec2(0, 0);");
+    append_line(fs_buf, &fs_len, "vec4 texVal0 = vec4(0, 0, 0, 0);");
+    append_line(fs_buf, &fs_len, "vec4 texVal1 = vec4(0, 0, 0, 0);");
+
     append_line(fs_buf, &fs_len, "float random(in vec3 value) {");
     append_line(fs_buf, &fs_len, "    float random = dot(sin(value), vec3(12.9898, 78.233, 37.719));");
     append_line(fs_buf, &fs_len, "    return fract(sin(random) * 143758.5453);");
@@ -450,6 +479,17 @@ static struct ShaderProgram* gfx_opengl_create_and_load_new_shader(uint64_t shad
     append_line(fs_buf, &fs_len, "out vec4 outColor;");
 #endif
 
+    if(cc_features.opt_shader) {
+        uint8_t shader_id = cc_features.shader_id;
+        if(g_shader_storage.size() > shader_id) {
+            auto shader_data = g_shader_storage[shader_id];
+            auto buffer = read_file(std::string(shader_data.shader.path));
+            append_str(fs_buf, &fs_len, buffer.c_str());
+        } else {
+            cc_features.opt_shader = false;
+        }
+    }
+
     append_line(fs_buf, &fs_len, "void main() {");
 
     // Reference approach to color wrapping as per GLideN64
@@ -461,33 +501,33 @@ static struct ShaderProgram* gfx_opengl_create_and_load_new_shader(uint64_t shad
             bool s = cc_features.clamp[i][0], t = cc_features.clamp[i][1];
 
 #if defined(USE_OPENGLES)
-            fs_len += sprintf(fs_buf + fs_len, "vec2 texSize%d = vec2(textureSize(uTex%d, 0));\n", i, i);
+            fs_len += sprintf(fs_buf + fs_len, "texSize%d = vec2(textureSize(uTex%d, 0));\n", i, i);
 #else
-            fs_len += sprintf(fs_buf + fs_len, "vec2 texSize%d = textureSize(uTex%d, 0);\n", i, i);
+            fs_len += sprintf(fs_buf + fs_len, "texSize%d = textureSize(uTex%d, 0);\n", i, i);
 #endif
 
             if (!s && !t) {
-                fs_len += sprintf(fs_buf + fs_len, "vec2 vTexCoordAdj%d = vTexCoord%d;\n", i, i);
+                fs_len += sprintf(fs_buf + fs_len, "vTexCoordAdj%d = vTexCoord%d;\n", i, i);
             } else {
                 if (s && t) {
                     fs_len += sprintf(fs_buf + fs_len,
-                                      "vec2 vTexCoordAdj%d = clamp(vTexCoord%d, 0.5 / texSize%d, "
+                                      "vTexCoordAdj%d = clamp(vTexCoord%d, 0.5 / texSize%d, "
                                       "vec2(vTexClampS%d, vTexClampT%d));\n",
                                       i, i, i, i, i);
                 } else if (s) {
                     fs_len += sprintf(fs_buf + fs_len,
-                                      "vec2 vTexCoordAdj%d = vec2(clamp(vTexCoord%d.s, 0.5 / "
+                                      "vTexCoordAdj%d = vec2(clamp(vTexCoord%d.s, 0.5 / "
                                       "texSize%d.s, vTexClampS%d), vTexCoord%d.t);\n",
                                       i, i, i, i, i);
                 } else {
                     fs_len += sprintf(fs_buf + fs_len,
-                                      "vec2 vTexCoordAdj%d = vec2(vTexCoord%d.s, clamp(vTexCoord%d.t, "
+                                      "vTexCoordAdj%d = vec2(vTexCoord%d.s, clamp(vTexCoord%d.t, "
                                       "0.5 / texSize%d.t, vTexClampT%d));\n",
                                       i, i, i, i, i);
                 }
             }
 
-            fs_len += sprintf(fs_buf + fs_len, "vec4 texVal%d = hookTexture2D(uTex%d, vTexCoordAdj%d, texSize%d);\n", i,
+            fs_len += sprintf(fs_buf + fs_len, "texVal%d = hookTexture2D(uTex%d, vTexCoordAdj%d, texSize%d);\n", i,
                               i, i, i);
             if (cc_features.used_masks[i]) {
 #ifdef USE_OPENGLES
@@ -553,6 +593,16 @@ static struct ShaderProgram* gfx_opengl_create_and_load_new_shader(uint64_t shad
         append_line(fs_buf, &fs_len,
                     "texel.a *= floor(clamp(random(vec3(floor(gl_FragCoord.xy * noise_scale), float(frame_count))) + "
                     "texel.a, 0.0, 1.0));");
+        append_line(fs_buf, &fs_len,
+                    "texel.a *= floor("
+                    "   clamp("
+                    "       random("
+                    "           vec3("
+                    "               floor(gl_FragCoord.xy * noise_scale), "
+                    "               float(frame_count)"
+                    "           )"
+                    "       ) + "
+                    "texel.a, 0.0, 1.0));");
     }
 
     if (cc_features.opt_grayscale) {
@@ -580,6 +630,11 @@ static struct ShaderProgram* gfx_opengl_create_and_load_new_shader(uint64_t shad
         append_line(fs_buf, &fs_len, "gl_FragColor = vec4(texel, 1.0);");
 #endif
     }
+
+    if(cc_features.opt_shader) {
+        append_line(fs_buf, &fs_len, "shaderMain();");
+    }
+
     append_line(fs_buf, &fs_len, "}");
 
     vs_buf[vs_len] = '\0';
@@ -1179,6 +1234,7 @@ struct GfxRenderingAPI gfx_opengl_api = { gfx_opengl_get_name,
                                           gfx_opengl_get_clip_parameters,
                                           gfx_opengl_unload_shader,
                                           gfx_opengl_load_shader,
+                                          gfx_opengl_unload_all_shaders,
                                           gfx_opengl_create_and_load_new_shader,
                                           gfx_opengl_lookup_shader,
                                           gfx_opengl_shader_get_info,
