@@ -98,3 +98,13 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(ThreadPool)
 
 list(APPEND ADDITIONAL_LIB_INCLUDES ${threadpool_SOURCE_DIR}/include)
+
+#========= RT64 ==========
+
+FetchContent_Declare(
+    rt64
+    GIT_REPOSITORY https://github.com/rt64/rt64.git
+    GIT_TAG d64100a058b6fa6185be9a2754a197b31f050467
+)
+
+FetchContent_MakeAvailable(rt64)
