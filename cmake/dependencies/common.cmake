@@ -101,10 +101,22 @@ list(APPEND ADDITIONAL_LIB_INCLUDES ${threadpool_SOURCE_DIR}/include)
 
 #========= RT64 ==========
 
+set(RT64_STATIC ON)
 FetchContent_Declare(
     rt64
-    GIT_REPOSITORY https://github.com/rt64/rt64.git
-    GIT_TAG d64100a058b6fa6185be9a2754a197b31f050467
+    GIT_REPOSITORY https://github.com/KiritoDv/rt64.git
+    GIT_TAG origin/main
 )
 
 FetchContent_MakeAvailable(rt64)
+
+target_include_directories(rt64 PUBLIC
+    ${rt64_SOURCE_DIR}/src
+    ${rt64_SOURCE_DIR}/src/rhi
+    ${rt64_SOURCE_DIR}/src/render
+    ${rt64_SOURCE_DIR}/src/contrib
+    ${rt64_SOURCE_DIR}/src/contrib/dxc/inc
+    ${rt64_SOURCE_DIR}/src/contrib/hlslpp/include
+    ${rt64_SOURCE_DIR}/ype-windows-binaries/include
+    ${rt64_SOURCE_DIR}/src/contrib/nativefiledialog-extended/src/include
+)

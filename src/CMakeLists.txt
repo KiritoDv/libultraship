@@ -215,9 +215,7 @@ if (USE_OPENGLES)
     endif()
 endif()
 
-if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
-    target_link_libraries(libultraship PRIVATE rt64)
-endif()
+target_link_libraries(libultraship PRIVATE rt64)
 
 #=================== Compile Options & Defs ===================
 
