@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace Ship {
+namespace LUS {
 struct MEM {
     uint8_t IMEM[1024 * 4];
     uint8_t DMEM[1024 * 4];

@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace Ship {
+namespace LUS {
 struct DPC {
     uint32_t END_REG = 0;
     uint32_t TMEM_REG = 0;

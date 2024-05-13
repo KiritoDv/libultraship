@@ -5,7 +5,7 @@
 #include "DPC.h"
 #include "MEM.h"
 
-namespace Ship {
+namespace LUS {
 
 class UltraContext : LUS::SDKContext {
 public:

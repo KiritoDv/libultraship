@@ -43,7 +43,7 @@ class RT64Window : public Ship::Window {
     static void OnFullscreenChanged(bool isNowFullscreen);
 
   private:
-    std::shared_ptr<Ship::UltraContext> mUltraContext;
+    std::shared_ptr<LUS::UltraContext> mUltraContext;
   // private:
   //   GfxRenderingAPI* mRenderingApi;
   //   GfxWindowManagerAPI* mWindowManagerApi;

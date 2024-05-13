@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace Ship {
+namespace LUS {
 struct VI {
     uint32_t INTR_REG = 0;
     uint32_t LEAP_REG = 0;

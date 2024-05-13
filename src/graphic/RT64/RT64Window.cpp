@@ -11,7 +11,7 @@
 #include <fstream>
 
 namespace Fast {
-RT64Window::RT64Window() : RT64Window(std::vector<std::shared_ptr<Ship::GuiWindow>>(), std::static_pointer_cast<LUS::SDKContext>(std::make_shared<Ship::UltraContext>())) {
+RT64Window::RT64Window() : RT64Window(std::vector<std::shared_ptr<Ship::GuiWindow>>(), std::static_pointer_cast<LUS::SDKContext>(std::make_shared<LUS::UltraContext>())) {
 }
 
 RT64Window::RT64Window(std::vector<std::shared_ptr<Ship::GuiWindow>> guiWindows, std::shared_ptr<LUS::SDKContext> ultraContext) : Ship::Window(guiWindows, ultraContext) {
