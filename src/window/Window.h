@@ -7,6 +7,7 @@
 #include <unordered_set>
 #include <spdlog/spdlog.h>
 #include "window/gui/Gui.h"
+#include "engine/SDKContext.h"
 
 namespace Ship {
 enum class WindowBackend { DX11, DX12, GLX_OPENGL, SDL_OPENGL, SDL_METAL, GX2, BACKEND_COUNT };
@@ -14,11 +15,11 @@ enum class WindowBackend { DX11, DX12, GLX_OPENGL, SDL_OPENGL, SDL_METAL, GX2, B
 class Config;
 
 class Window {
-    friend class Context;
+  friend class Context;
 
   public:
     Window();
-    Window(std::vector<std::shared_ptr<GuiWindow>> guiWindows);
+    Window(std::vector<std::shared_ptr<GuiWindow>> guiWindows, std::shared_ptr<LUS::SDKContext> sdkContext = nullptr);
     ~Window();
 
     virtual void Init() = 0;
@@ -54,6 +55,7 @@ class Window {
     void AddAvailableWindowBackend(WindowBackend backend);
 
   private:
+    std::shared_ptr<LUS::SDKContext> mSDKContext;
     std::shared_ptr<Gui> mGui;
     int32_t mLastScancode;
     WindowBackend mWindowBackend;

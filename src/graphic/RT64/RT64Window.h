@@ -1,11 +1,13 @@
 #pragma once
+#include <memory>
 #include "window/Window.h"
+#include "engine/libultra/UltraContext.h"
 
 namespace Fast {
 class RT64Window : public Ship::Window {
   public:
     RT64Window();
-    RT64Window(std::vector<std::shared_ptr<Ship::GuiWindow>> guiWindows);
+    RT64Window(std::vector<std::shared_ptr<Ship::GuiWindow>> guiWindows, std::shared_ptr<LUS::SDKContext> ultraContext);
     ~RT64Window();
 
     void Init() override;
@@ -40,6 +42,8 @@ class RT64Window : public Ship::Window {
     static void AllKeysUp(void);
     static void OnFullscreenChanged(bool isNowFullscreen);
 
+  private:
+    std::shared_ptr<Ship::UltraContext> mUltraContext;
   // private:
   //   GfxRenderingAPI* mRenderingApi;
   //   GfxWindowManagerAPI* mWindowManagerApi;

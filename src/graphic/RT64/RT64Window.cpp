@@ -11,10 +11,10 @@
 #include <fstream>
 
 namespace Fast {
-RT64Window::RT64Window() : RT64Window(std::vector<std::shared_ptr<Ship::GuiWindow>>()) {
+RT64Window::RT64Window() : RT64Window(std::vector<std::shared_ptr<Ship::GuiWindow>>(), std::static_pointer_cast<LUS::SDKContext>(std::make_shared<Ship::UltraContext>())) {
 }
 
-RT64Window::RT64Window(std::vector<std::shared_ptr<Ship::GuiWindow>> guiWindows) : Ship::Window(guiWindows) {
+RT64Window::RT64Window(std::vector<std::shared_ptr<Ship::GuiWindow>> guiWindows, std::shared_ptr<LUS::SDKContext> ultraContext) : Ship::Window(guiWindows, ultraContext) {
 
 }
 
@@ -24,12 +24,43 @@ RT64Window::~RT64Window() {
 
 void RT64Window::Init() {
     RT64::Application::Core appCore{};
+    this->mUltraContext->Create();
 #if defined(_WIN32)
     // appCore.window = window_handle.window;
 #elif defined(__linux__)
     appCore.window.display = window_handle.display;
     appCore.window.window = window_handle.window;
 #endif
+
+    appCore.RDRAM = this->mUltraContext->mem->DRAM;
+    appCore.DMEM = this->mUltraContext->mem->DMEM;
+    appCore.IMEM = this->mUltraContext->mem->IMEM;
+
+    appCore.MI_INTR_REG = &this->mUltraContext->mem->INTR_REG;
+
+    appCore.DPC_START_REG    = &this->mUltraContext->dpc->START_REG;
+    appCore.DPC_END_REG      = &this->mUltraContext->dpc->END_REG;
+    appCore.DPC_CURRENT_REG  = &this->mUltraContext->dpc->CURRENT_REG;
+    appCore.DPC_STATUS_REG   = &this->mUltraContext->dpc->STATUS_REG;
+    appCore.DPC_CLOCK_REG    = &this->mUltraContext->dpc->CLOCK_REG;
+    appCore.DPC_BUFBUSY_REG  = &this->mUltraContext->dpc->BUFBUSY_REG;
+    appCore.DPC_PIPEBUSY_REG = &this->mUltraContext->dpc->PIPEBUSY_REG;
+    appCore.DPC_TMEM_REG     = &this->mUltraContext->dpc->TMEM_REG;
+
+    appCore.VI_STATUS_REG = &this->mUltraContext->vi->STATUS_REG;
+    appCore.VI_ORIGIN_REG = &this->mUltraContext->vi->ORIGIN_REG;
+    appCore.VI_WIDTH_REG  = &this->mUltraContext->vi->WIDTH_REG;
+    appCore.VI_INTR_REG   = &this->mUltraContext->vi->INTR_REG;
+    appCore.VI_V_CURRENT_LINE_REG = &this->mUltraContext->vi->V_CURRENT_LINE_REG;
+    appCore.VI_TIMING_REG = &this->mUltraContext->vi->TIMING_REG;
+    appCore.VI_V_SYNC_REG = &this->mUltraContext->vi->V_SYNC_REG;
+    appCore.VI_H_SYNC_REG = &this->mUltraContext->vi->H_SYNC_REG;
+    appCore.VI_LEAP_REG   = &this->mUltraContext->vi->LEAP_REG;
+    appCore.VI_H_START_REG = &this->mUltraContext->vi->H_START_REG;
+    appCore.VI_V_START_REG = &this->mUltraContext->vi->V_START_REG;
+    appCore.VI_V_BURST_REG = &this->mUltraContext->vi->V_BURST_REG;
+    appCore.VI_X_SCALE_REG = &this->mUltraContext->vi->X_SCALE_REG;
+    appCore.VI_Y_SCALE_REG = &this->mUltraContext->vi->Y_SCALE_REG;
 }
 
 void RT64Window::SetTargetFps(int32_t fps) {
