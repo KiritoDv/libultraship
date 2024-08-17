@@ -78,7 +78,7 @@ int WasapiAudioPlayer::Buffered(void) {
 }
 
 int WasapiAudioPlayer::GetDesiredBuffered(void) {
-    return 2480;
+    return this->mDesiredBuffered;
 }
 
 void WasapiAudioPlayer::Play(const uint8_t* buf, size_t len) {

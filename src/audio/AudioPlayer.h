@@ -18,12 +18,14 @@ class AudioPlayer {
     bool IsInitialized(void);
 
     constexpr int GetSampleRate() const {
-        return 44100;
+        return mSampleRate;
     }
 
   protected:
     virtual bool DoInit(void) = 0;
 
+    int mDesiredBuffered = 1100;
+    int mSampleRate = 32000;
   private:
     bool mInitialized;
 };

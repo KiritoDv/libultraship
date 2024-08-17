@@ -70,6 +70,11 @@ void* ResourceGetDataByName(const char* name) {
 }
 
 void* ResourceGetDataByCrc(uint64_t crc) {
+
+    if(crc == 0) {
+        return nullptr;
+    }
+
     auto name = ResourceGetNameByCrc(crc);
 
     if (name == nullptr || strlen(name) == 0) {

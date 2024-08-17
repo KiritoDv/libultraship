@@ -18,9 +18,9 @@ bool SDLAudioPlayer::DoInit(void) {
     SDL_AudioSpec want, have;
     SDL_zero(want);
     want.freq = this->GetSampleRate();
-    want.format = AUDIO_S16SYS;
+    want.format = AUDIO_S16;
     want.channels = 2;
-    want.samples = 1024;
+    want.samples = 512;
     want.callback = NULL;
     mDevice = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
     if (mDevice == 0) {
@@ -37,7 +37,7 @@ int SDLAudioPlayer::Buffered(void) {
 }
 
 int SDLAudioPlayer::GetDesiredBuffered(void) {
-    return 2480;
+    return this->mDesiredBuffered;
 }
 
 void SDLAudioPlayer::Play(const uint8_t* buf, size_t len) {

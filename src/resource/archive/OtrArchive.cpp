@@ -27,7 +27,9 @@ std::shared_ptr<Ship::File> OtrArchive::LoadFileRaw(const std::string& filePath)
     HANDLE fileHandle;
     bool attempt = SFileOpenFileEx(mHandle, filePath.c_str(), 0, &fileHandle);
     if (!attempt) {
-        SPDLOG_TRACE("({}) Failed to open file {} from mpq archive  {}.", GetLastError(), filePath, GetPath());
+        if(!filePath.ends_with(".meta")) {
+            SPDLOG_TRACE("({}) Failed to open file {} from mpq archive  {}.", GetLastError(), filePath, GetPath());
+        }
         return nullptr;
     }
 
