@@ -38,7 +38,7 @@ union Ambient {
 
 struct LightEntry {
     Ambient a;
-    LightData* l;
+    LightData l;
 };
 
 class Light : public Ship::Resource<LightEntry> {
