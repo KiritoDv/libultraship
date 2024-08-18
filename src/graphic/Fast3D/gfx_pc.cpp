@@ -1453,9 +1453,10 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
     bool invisible =
         (g_rdp.other_mode_l & (3 << 24)) == (G_BL_0 << 24) && (g_rdp.other_mode_l & (3 << 20)) == (G_BL_CLR_MEM << 20);
     bool use_grayscale = g_rdp.grayscale;
-    bool use_alpha = use_2cyc ? (g_rdp.other_mode_l & (3 << 20)) == (G_BL_CLR_MEM << 20) &&
-                                    (g_rdp.other_mode_l & (3 << 16)) == (G_BL_1MA << 16)
-                              : (g_rdp.other_mode_l & (3 << 18)) == G_BL_1MA;
+    bool use_alpha = ((g_rdp.other_mode_l & (3 << 20)) == (G_BL_CLR_MEM << 20) &&
+                      (g_rdp.other_mode_l & (3 << 16)) == (G_BL_1MA << 16)) ||
+                     ((g_rdp.other_mode_l & (3 << 22)) == (G_BL_CLR_MEM << 22) &&
+                      (g_rdp.other_mode_l & (3 << 18)) == (G_BL_1MA << 18));
 
     if (texture_edge) {
         use_alpha = true;
