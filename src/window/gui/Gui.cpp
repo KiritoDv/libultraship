@@ -302,7 +302,6 @@ void Gui::DrawMenu() {
     ImGuiBackendNewFrame();
     ImGuiWMNewFrame();
     ImGui::NewFrame();
-    
     Context::GetInstance()->GetWindow()->GetGui()->GetGuiWindow("Console")->Update();
 
     const std::shared_ptr<Window> wnd = Context::GetInstance()->GetWindow();
