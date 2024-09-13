@@ -35,6 +35,7 @@ target_include_directories(ImGui PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/
 if(NOT EXCLUDE_MPQ_SUPPORT)
     set(stormlib_patch_file ${CMAKE_CURRENT_SOURCE_DIR}/cmake/dependencies/patches/stormlib-optimizations.patch)
     # Applies the patch or checks if it has already been applied successfully previously. Will error otherwise.
+    # The `--quiet` flag is necessary to prevent stderr output from interupting the command when run inside Visual Studio.
     set(stormlib_apply_patch_if_needed git apply --quiet ${stormlib_patch_file} || git apply --reverse --check ${stormlib_patch_file})
 
     FetchContent_Declare(
