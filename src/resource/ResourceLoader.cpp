@@ -6,12 +6,6 @@
 #include "Context.h"
 #include "utils/binarytools/MemoryStream.h"
 #include "utils/binarytools/BinaryReader.h"
-#include "factory/TextureFactory.h"
-#include "factory/VertexFactory.h"
-#include "factory/ArrayFactory.h"
-#include "factory/BlobFactory.h"
-#include "factory/DisplayListFactory.h"
-#include "factory/MatrixFactory.h"
 #include "factory/JsonFactory.h"
 
 namespace Ship {
@@ -24,26 +18,8 @@ ResourceLoader::~ResourceLoader() {
 }
 
 void ResourceLoader::RegisterGlobalResourceFactories() {
-    RegisterResourceFactory(std::make_shared<LUS::ResourceFactoryBinaryTextureV0>(), RESOURCE_FORMAT_BINARY, "Texture",
-                            static_cast<uint32_t>(LUS::ResourceType::Texture), 0);
-    RegisterResourceFactory(std::make_shared<LUS::ResourceFactoryBinaryTextureV1>(), RESOURCE_FORMAT_BINARY, "Texture",
-                            static_cast<uint32_t>(LUS::ResourceType::Texture), 1);
-    RegisterResourceFactory(std::make_shared<LUS::ResourceFactoryBinaryVertexV0>(), RESOURCE_FORMAT_BINARY, "Vertex",
-                            static_cast<uint32_t>(LUS::ResourceType::Vertex), 0);
-    RegisterResourceFactory(std::make_shared<LUS::ResourceFactoryXMLVertexV0>(), RESOURCE_FORMAT_XML, "Vertex",
-                            static_cast<uint32_t>(LUS::ResourceType::Vertex), 0);
-    RegisterResourceFactory(std::make_shared<LUS::ResourceFactoryBinaryDisplayListV0>(), RESOURCE_FORMAT_BINARY,
-                            "DisplayList", static_cast<uint32_t>(LUS::ResourceType::DisplayList), 0);
-    RegisterResourceFactory(std::make_shared<LUS::ResourceFactoryXMLDisplayListV0>(), RESOURCE_FORMAT_XML,
-                            "DisplayList", static_cast<uint32_t>(LUS::ResourceType::DisplayList), 0);
-    RegisterResourceFactory(std::make_shared<LUS::ResourceFactoryBinaryMatrixV0>(), RESOURCE_FORMAT_BINARY, "Matrix",
-                            static_cast<uint32_t>(LUS::ResourceType::Matrix), 0);
-    RegisterResourceFactory(std::make_shared<LUS::ResourceFactoryBinaryArrayV0>(), RESOURCE_FORMAT_BINARY, "Array",
-                            static_cast<uint32_t>(LUS::ResourceType::Array), 0);
-    RegisterResourceFactory(std::make_shared<LUS::ResourceFactoryBinaryBlobV0>(), RESOURCE_FORMAT_BINARY, "Blob",
-                            static_cast<uint32_t>(LUS::ResourceType::Blob), 0);
-    RegisterResourceFactory(std::make_shared<Ship::ResourceFactoryBinaryJsonV0>(), RESOURCE_FORMAT_BINARY, "Json",
-                            static_cast<uint32_t>(Ship::ResourceType::Json), 0);
+    RegisterResourceFactory(std::make_shared<ResourceFactoryBinaryJsonV0>(), RESOURCE_FORMAT_BINARY, "Json",
+                            static_cast<uint32_t>(ResourceType::Json), 0);
 }
 
 bool ResourceLoader::RegisterResourceFactory(std::shared_ptr<ResourceFactory> factory, uint32_t format,
@@ -68,10 +44,23 @@ bool ResourceLoader::RegisterResourceFactory(std::shared_ptr<ResourceFactory> fa
     return true;
 }
 
+std::string ResourceLoader::DecodeASCII(uint32_t value) {
+    std::string str(4, '\0'); // Initialize the string with 4 null characters
+
+    str[0] = (value >> 24) & 0xFF;
+    str[1] = (value >> 16) & 0xFF;
+    str[2] = (value >> 8) & 0xFF;
+    str[3] = value & 0xFF;
+
+    return str;
+}
+
 std::shared_ptr<ResourceFactory> ResourceLoader::GetFactory(uint32_t format, uint32_t type, uint32_t version) {
     ResourceFactoryKey key{ .resourceFormat = format, .resourceType = type, .resourceVersion = version };
     if (!mFactories.contains(key)) {
-        SPDLOG_ERROR("Could not find resource factory with key {}{}{}", format, type, version);
+        SPDLOG_ERROR("GetFactory failed to find an import factory for resource of type {} as hex: 0x{:X}. Format: {}, "
+                     "Version: {}",
+                     DecodeASCII(type), type, format, version);
         return nullptr;
     }
 
@@ -87,7 +76,7 @@ std::shared_ptr<ResourceFactory> ResourceLoader::GetFactory(uint32_t format, std
     return GetFactory(format, mResourceTypes[typeName], version);
 }
 
-std::shared_ptr<Ship::IResource> ResourceLoader::LoadResource(std::shared_ptr<Ship::File> fileToLoad) {
+std::shared_ptr<IResource> ResourceLoader::LoadResource(std::shared_ptr<File> fileToLoad) {
     if (fileToLoad == nullptr) {
         SPDLOG_ERROR("Failed to load resource: File not loaded");
         return nullptr;
@@ -101,13 +90,7 @@ std::shared_ptr<Ship::IResource> ResourceLoader::LoadResource(std::shared_ptr<Sh
     auto factory =
         GetFactory(fileToLoad->InitData->Format, fileToLoad->InitData->Type, fileToLoad->InitData->ResourceVersion);
     if (factory == nullptr) {
-        SPDLOG_ERROR("Failed to load resource: Factory does not exist.\n"
-                     "Path: {}\n"
-                     "Type: {}\n"
-                     "Format: {}\n"
-                     "Version: {}",
-                     fileToLoad->InitData->Path, fileToLoad->InitData->Type, fileToLoad->InitData->Format,
-                     fileToLoad->InitData->ResourceVersion);
+        SPDLOG_ERROR("LoadResource failed to find factory for the resource at path: {}", fileToLoad->InitData->Path);
         return nullptr;
     }
 

@@ -56,6 +56,8 @@ class Config {
     void SetInt(const std::string& key, int32_t value);
     void SetUInt(const std::string& key, uint32_t value);
     void Erase(const std::string& key);
+    void EraseBlock(const std::string& key);
+    void Copy(const std::string& fromKey, const std::string& toKey);
     bool Contains(const std::string& key);
     void Reload();
     void Save();
@@ -63,8 +65,8 @@ class Config {
     nlohmann::json GetFlattenedJson();
     bool IsNewInstance();
 
-    AudioBackend GetAudioBackend();
-    void SetAudioBackend(AudioBackend backend);
+    AudioBackend GetCurrentAudioBackend();
+    void SetCurrentAudioBackend(AudioBackend backend);
     WindowBackend GetWindowBackend();
     void SetWindowBackend(WindowBackend backend);
 

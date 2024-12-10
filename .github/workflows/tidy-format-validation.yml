@@ -7,13 +7,13 @@ jobs:
   tidy-format:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsdl2-dev libpng-dev libglew-dev libzip-dev zipcmp zipmerge ziptool nlohmann-json3-dev ninja-build clang-tidy clang-format-12
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 2
+          sudo apt-get install -y $(cat .github/workflows/apt-deps.txt) clang-tidy clang-format-12
       - name: ccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
@@ -31,6 +31,17 @@ jobs:
           ./configure
           make -j 10
           sudo make install
+      - name: Install latest tinyxml2
+        run: |
+          export PATH="/usr/lib/ccache:/usr/local/opt/ccache/libexec:$PATH"
+          wget https://github.com/leethomason/tinyxml2/archive/refs/tags/10.0.0.tar.gz
+          tar -xzf 10.0.0.tar.gz
+          cd tinyxml2-10.0.0
+          mkdir build
+          cd build
+          cmake ..
+          make
+          sudo make install
       - name: Prepare compile_commands.json
         run: |
           cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
@@ -45,7 +56,7 @@ jobs:
           echo ${{ github.event.number }} > clang-tidy-result/pr-id.txt
           echo ${{ github.event.pull_request.head.repo.full_name }} > clang-tidy-result/pr-head-repo.txt
           echo ${{ github.event.pull_request.head.ref }} > clang-tidy-result/pr-head-ref.txt
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v4
         with:
           name: clang-tidy-result
           path: clang-tidy-result/

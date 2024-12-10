@@ -1,7 +1,7 @@
 #include "GyroMappingFactory.h"
 #include "controller/controldevice/controller/mapping/sdl/SDLGyroMapping.h"
 #include "public/bridge/consolevariablebridge.h"
-#include <Utils/StringHelper.h>
+#include "utils/StringHelper.h"
 #include "libultraship/libultra/controller.h"
 #include "Context.h"
 #include "controller/deviceindex/ShipDeviceIndexToSDLDeviceIndexMapping.h"
@@ -9,7 +9,7 @@
 namespace Ship {
 std::shared_ptr<ControllerGyroMapping> GyroMappingFactory::CreateGyroMappingFromConfig(uint8_t portIndex,
                                                                                        std::string id) {
-    const std::string mappingCvarKey = "gControllers.GyroMappings." + id;
+    const std::string mappingCvarKey = CVAR_PREFIX_CONTROLLERS ".GyroMappings." + id;
     const std::string mappingClass =
         CVarGetString(StringHelper::Sprintf("%s.GyroMappingClass", mappingCvarKey.c_str()).c_str(), "");
 

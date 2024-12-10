@@ -10,7 +10,7 @@
 #ifndef IMGUI_DEFINE_MATH_OPERATORS
 #define IMGUI_DEFINE_MATH_OPERATORS
 #endif
-#include <ImGui/imgui.h>
+#include <imgui.h>
 #include <spdlog/spdlog.h>
 
 namespace Ship {
@@ -30,12 +30,12 @@ class ConsoleWindow : public GuiWindow {
     void Append(const std::string& channel, spdlog::level::level_enum priority, const char* fmt, ...);
     std::string GetCurrentChannel();
     void ClearBindings();
+    void DrawElement() override;
 
   protected:
     void Append(const std::string& channel, spdlog::level::level_enum priority, const char* fmt, va_list args);
     void InitElement() override;
     void UpdateElement() override;
-    void DrawElement() override;
 
   private:
     struct ConsoleLine {

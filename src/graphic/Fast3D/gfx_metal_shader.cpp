@@ -8,6 +8,7 @@
 #ifdef __APPLE__
 
 #include <Metal/Metal.hpp>
+#include <public/bridge/consolevariablebridge.h>
 
 #include "gfx_metal_shader.h"
 
@@ -29,7 +30,7 @@ static void append_line(char* buf, size_t* len, const char* str) {
 }
 
 static const char* shader_item_to_str(uint32_t item, bool with_alpha, bool only_alpha, bool inputs_have_alpha,
-                                      bool hint_single_element) {
+                                      bool first_cycle, bool hint_single_element) {
     if (!only_alpha) {
         switch (item) {
             case SHADER_0:
@@ -45,17 +46,27 @@ static const char* shader_item_to_str(uint32_t item, bool with_alpha, bool only_
             case SHADER_INPUT_4:
                 return with_alpha || !inputs_have_alpha ? "in.input4" : "in.input4.xyz";
             case SHADER_TEXEL0:
-                return with_alpha ? "texVal0" : "texVal0.xyz";
+                return first_cycle ? (with_alpha ? "texVal0" : "texVal0.xyz")
+                                   : (with_alpha ? "texVal1" : "texVal1.xyz");
             case SHADER_TEXEL0A:
-                return hint_single_element ? "texVal0.w"
-                                           : (with_alpha ? "float4(texVal0.w, texVal0.w, texVal0.w, texVal0.w)"
-                                                         : "float3(texVal0.w, texVal0.w, texVal0.w)");
+                return first_cycle
+                           ? (hint_single_element ? "texVal0.w"
+                                                  : (with_alpha ? "float4(texVal0.w, texVal0.w, texVal0.w, texVal0.w)"
+                                                                : "float3(texVal0.w, texVal0.w, texVal0.w)"))
+                           : (hint_single_element ? "texVal1.w"
+                                                  : (with_alpha ? "float4(texVal1.w, texVal1.w, texVal1.w, texVal1.w)"
+                                                                : "float3(texVal1.w, texVal1.w, texVal1.w)"));
             case SHADER_TEXEL1A:
-                return hint_single_element ? "texVal1.w"
-                                           : (with_alpha ? "float4(texVal1.w, texVal1.w, texVal1.w, texVal1.w)"
-                                                         : "float3(texVal1.w, texVal1.w, texVal1.w)");
+                return first_cycle
+                           ? (hint_single_element ? "texVal1.w"
+                                                  : (with_alpha ? "float4(texVal1.w, texVal1.w, texVal1.w, texVal1.w)"
+                                                                : "float3(texVal1.w, texVal1.w, texVal1.w)"))
+                           : (hint_single_element ? "texVal0.w"
+                                                  : (with_alpha ? "float4(texVal0.w, texVal0.w, texVal0.w, texVal0.w)"
+                                                                : "float3(texVal0.w, texVal0.w, texVal0.w)"));
             case SHADER_TEXEL1:
-                return with_alpha ? "texVal1" : "texVal1.xyz";
+                return first_cycle ? (with_alpha ? "texVal1" : "texVal1.xyz")
+                                   : (with_alpha ? "texVal0" : "texVal0.xyz");
             case SHADER_COMBINED:
                 return with_alpha ? "texel" : "texel.xyz";
             case SHADER_NOISE:
@@ -77,13 +88,13 @@ static const char* shader_item_to_str(uint32_t item, bool with_alpha, bool only_
             case SHADER_INPUT_4:
                 return "in.input4.w";
             case SHADER_TEXEL0:
-                return "texVal0.w";
+                return first_cycle ? "texVal0.w" : "texVal1.w";
             case SHADER_TEXEL0A:
-                return "texVal0.w";
+                return first_cycle ? "texVal0.w" : "texVal1.w";
             case SHADER_TEXEL1A:
-                return "texVal1.w";
+                return first_cycle ? "texVal1.w" : "texVal0.w";
             case SHADER_TEXEL1:
-                return "texVal1.w";
+                return first_cycle ? "texVal1.w" : "texVal0.w";
             case SHADER_COMBINED:
                 return "texel.w";
             case SHADER_NOISE:
@@ -96,30 +107,40 @@ static const char* shader_item_to_str(uint32_t item, bool with_alpha, bool only_
 #undef RAND_NOISE
 
 static void append_formula(char* buf, size_t* len, const uint8_t c[2][4], bool do_single, bool do_multiply, bool do_mix,
-                           bool with_alpha, bool only_alpha, bool opt_alpha) {
+                           bool with_alpha, bool only_alpha, bool opt_alpha, bool first_cycle) {
     if (do_single) {
-        append_str(buf, len, shader_item_to_str(c[only_alpha][3], with_alpha, only_alpha, opt_alpha, false));
+        append_str(buf, len,
+                   shader_item_to_str(c[only_alpha][3], with_alpha, only_alpha, opt_alpha, first_cycle, false));
     } else if (do_multiply) {
-        append_str(buf, len, shader_item_to_str(c[only_alpha][0], with_alpha, only_alpha, opt_alpha, false));
+        append_str(buf, len,
+                   shader_item_to_str(c[only_alpha][0], with_alpha, only_alpha, opt_alpha, first_cycle, false));
         append_str(buf, len, " * ");
-        append_str(buf, len, shader_item_to_str(c[only_alpha][2], with_alpha, only_alpha, opt_alpha, true));
+        append_str(buf, len,
+                   shader_item_to_str(c[only_alpha][2], with_alpha, only_alpha, opt_alpha, first_cycle, true));
     } else if (do_mix) {
         append_str(buf, len, "mix(");
-        append_str(buf, len, shader_item_to_str(c[only_alpha][1], with_alpha, only_alpha, opt_alpha, false));
+        append_str(buf, len,
+                   shader_item_to_str(c[only_alpha][1], with_alpha, only_alpha, opt_alpha, first_cycle, false));
         append_str(buf, len, ", ");
-        append_str(buf, len, shader_item_to_str(c[only_alpha][0], with_alpha, only_alpha, opt_alpha, false));
+        append_str(buf, len,
+                   shader_item_to_str(c[only_alpha][0], with_alpha, only_alpha, opt_alpha, first_cycle, false));
         append_str(buf, len, ", ");
-        append_str(buf, len, shader_item_to_str(c[only_alpha][2], with_alpha, only_alpha, opt_alpha, true));
+        append_str(buf, len,
+                   shader_item_to_str(c[only_alpha][2], with_alpha, only_alpha, opt_alpha, first_cycle, true));
         append_str(buf, len, ")");
     } else {
         append_str(buf, len, "(");
-        append_str(buf, len, shader_item_to_str(c[only_alpha][0], with_alpha, only_alpha, opt_alpha, false));
+        append_str(buf, len,
+                   shader_item_to_str(c[only_alpha][0], with_alpha, only_alpha, opt_alpha, first_cycle, false));
         append_str(buf, len, " - ");
-        append_str(buf, len, shader_item_to_str(c[only_alpha][1], with_alpha, only_alpha, opt_alpha, false));
+        append_str(buf, len,
+                   shader_item_to_str(c[only_alpha][1], with_alpha, only_alpha, opt_alpha, first_cycle, false));
         append_str(buf, len, ") * ");
-        append_str(buf, len, shader_item_to_str(c[only_alpha][2], with_alpha, only_alpha, opt_alpha, true));
+        append_str(buf, len,
+                   shader_item_to_str(c[only_alpha][2], with_alpha, only_alpha, opt_alpha, first_cycle, true));
         append_str(buf, len, " + ");
-        append_str(buf, len, shader_item_to_str(c[only_alpha][3], with_alpha, only_alpha, opt_alpha, false));
+        append_str(buf, len,
+                   shader_item_to_str(c[only_alpha][3], with_alpha, only_alpha, opt_alpha, first_cycle, false));
     }
 }
 
@@ -253,11 +274,22 @@ MTL::VertexDescriptor* gfx_metal_build_shader(char buf[8192], size_t& num_floats
     append_line(buf, &len, "}");
     // end vertex shader
 
+    append_line(buf, &len, "float mod(float a, float b) {");
+    append_line(buf, &len, "    return float(a - b * floor(a / b));");
+    append_line(buf, &len, "}");
+
     append_line(buf, &len, "float3 mod(float3 a, float3 b) {");
     append_line(
         buf, &len,
         "    return float3(a.x - b.x * floor(a.x / b.x), a.y - b.y * floor(a.y / b.y), a.z - b.z * floor(a.z / b.z));");
     append_line(buf, &len, "}");
+
+    append_line(buf, &len, "float4 mod(float4 a, float4 b) {");
+    append_line(buf, &len,
+                "    return float4(a.x - b.x * floor(a.x / b.x), a.y - b.y * floor(a.y / b.y), a.z - b.z * floor(a.z / "
+                "b.z), a.w - b.w * floor(a.w / b.w));");
+    append_line(buf, &len, "}");
+
     append_line(buf, &len, "#define WRAP(x, low, high) mod((x)-(low), (high)-(low)) + (low)");
 
     // fragment shader
@@ -379,29 +411,41 @@ MTL::VertexDescriptor* gfx_metal_build_shader(char buf[8192], size_t& num_floats
 
     append_line(buf, &len, cc_features.opt_alpha ? "    float4 texel;" : "    float3 texel;");
     for (int c = 0; c < (cc_features.opt_2cyc ? 2 : 1); c++) {
+        if (c == 1) {
+            if (cc_features.opt_alpha) {
+                if (cc_features.c[c][1][2] == SHADER_COMBINED) {
+                    append_line(buf, &len, "texel.w = WRAP(texel.w, -1.01, 1.01);");
+                } else {
+                    append_line(buf, &len, "texel.w = WRAP(texel.w, -0.51, 1.51);");
+                }
+            }
+
+            if (cc_features.c[c][0][2] == SHADER_COMBINED) {
+                append_line(buf, &len, "texel.xyz = WRAP(texel.xyz, -1.01, 1.01);");
+            } else {
+                append_line(buf, &len, "texel.xyz = WRAP(texel.xyz, -0.51, 1.51);");
+            }
+        }
+
         append_str(buf, &len, "    texel = ");
 
         if (!cc_features.color_alpha_same[c] && cc_features.opt_alpha) {
             append_str(buf, &len, "float4(");
             append_formula(buf, &len, cc_features.c[c], cc_features.do_single[c][0], cc_features.do_multiply[c][0],
-                           cc_features.do_mix[c][0], false, false, true);
+                           cc_features.do_mix[c][0], false, false, true, c == 0);
             append_str(buf, &len, ", ");
             append_formula(buf, &len, cc_features.c[c], cc_features.do_single[c][1], cc_features.do_multiply[c][1],
-                           cc_features.do_mix[c][1], true, true, true);
+                           cc_features.do_mix[c][1], true, true, true, c == 0);
             append_str(buf, &len, ")");
         } else {
             append_formula(buf, &len, cc_features.c[c], cc_features.do_single[c][0], cc_features.do_multiply[c][0],
-                           cc_features.do_mix[c][0], cc_features.opt_alpha, false, cc_features.opt_alpha);
+                           cc_features.do_mix[c][0], cc_features.opt_alpha, false, cc_features.opt_alpha, c == 0);
         }
         append_line(buf, &len, ";");
-
-        if (c == 0) {
-            append_str(buf, &len, "texel.xyz = WRAP(texel.xyz, -1.01, 1.01);");
-        }
     }
 
-    append_str(buf, &len, "texel.xyz = WRAP(texel.xyz, -0.51, 1.51);");
-    append_str(buf, &len, "texel.xyz = clamp(texel.xyz, 0.0, 1.0);");
+    append_str(buf, &len, "texel = WRAP(texel, -0.51, 1.51);");
+    append_str(buf, &len, "texel = clamp(texel, 0.0, 1.0);");
 
     if (cc_features.opt_fog) {
         if (cc_features.opt_alpha) {

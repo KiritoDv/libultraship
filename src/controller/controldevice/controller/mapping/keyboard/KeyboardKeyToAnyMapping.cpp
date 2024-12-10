@@ -1,7 +1,7 @@
 #include "KeyboardKeyToAnyMapping.h"
 #include "Context.h"
 
-#include <Utils/StringHelper.h>
+#include "utils/StringHelper.h"
 #include "window/gui/IconsFontAwesome4.h"
 
 namespace Ship {
@@ -16,7 +16,7 @@ std::string KeyboardKeyToAnyMapping::GetPhysicalInputName() {
     return Context::GetInstance()->GetWindow()->GetKeyName(mKeyboardScancode);
 }
 
-bool KeyboardKeyToAnyMapping::ProcessKeyboardEvent(Ship::KbEventType eventType, Ship::KbScancode scancode) {
+bool KeyboardKeyToAnyMapping::ProcessKeyboardEvent(KbEventType eventType, KbScancode scancode) {
     if (eventType == KbEventType::LUS_KB_EVENT_ALL_KEYS_UP) {
         mKeyPressed = false;
         return true;

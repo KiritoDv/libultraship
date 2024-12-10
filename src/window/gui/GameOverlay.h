@@ -12,10 +12,6 @@
 
 namespace Ship {
 
-#ifndef CVAR_GAME_OVERLAY_FONT
-#define CVAR_GAME_OVERLAY_FONT "gOverlayFont"
-#endif
-
 enum class OverlayType { TEXT, IMAGE, NOTIFICATION };
 
 struct Overlay {
@@ -31,7 +27,7 @@ class GameOverlay {
     ~GameOverlay();
 
     void Init();
-    void LoadFont(const std::string& name, const std::string& path, float fontSize);
+    void LoadFont(const std::string& name, float fontSize, const std::string& path, uintptr_t owner = 0);
     void SetCurrentFont(const std::string& name);
     void Draw();
     void DrawSettings();

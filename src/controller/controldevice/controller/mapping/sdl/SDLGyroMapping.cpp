@@ -4,13 +4,13 @@
 #include "Context.h"
 
 #include "public/bridge/consolevariablebridge.h"
-#include <Utils/StringHelper.h>
+#include "utils/StringHelper.h"
 
 namespace Ship {
 SDLGyroMapping::SDLGyroMapping(ShipDeviceIndex shipDeviceIndex, uint8_t portIndex, float sensitivity,
                                float neutralPitch, float neutralYaw, float neutralRoll)
     : ControllerInputMapping(shipDeviceIndex), ControllerGyroMapping(shipDeviceIndex, portIndex, sensitivity),
-      mNeutralPitch(neutralPitch), SDLMapping(shipDeviceIndex), mNeutralYaw(neutralYaw), mNeutralRoll(neutralRoll) {
+      SDLMapping(shipDeviceIndex), mNeutralPitch(neutralPitch), mNeutralYaw(neutralYaw), mNeutralRoll(neutralRoll) {
 }
 
 void SDLGyroMapping::Recalibrate() {
@@ -50,7 +50,7 @@ std::string SDLGyroMapping::GetGyroMappingId() {
 }
 
 void SDLGyroMapping::SaveToConfig() {
-    const std::string mappingCvarKey = "gControllers.GyroMappings." + GetGyroMappingId();
+    const std::string mappingCvarKey = CVAR_PREFIX_CONTROLLERS ".GyroMappings." + GetGyroMappingId();
 
     CVarSetString(StringHelper::Sprintf("%s.GyroMappingClass", mappingCvarKey.c_str()).c_str(), "SDLGyroMapping");
     CVarSetInteger(StringHelper::Sprintf("%s.ShipDeviceIndex", mappingCvarKey.c_str()).c_str(),
@@ -64,7 +64,7 @@ void SDLGyroMapping::SaveToConfig() {
 }
 
 void SDLGyroMapping::EraseFromConfig() {
-    const std::string mappingCvarKey = "gControllers.GyroMappings." + GetGyroMappingId();
+    const std::string mappingCvarKey = CVAR_PREFIX_CONTROLLERS ".GyroMappings." + GetGyroMappingId();
 
     CVarClear(StringHelper::Sprintf("%s.GyroMappingClass", mappingCvarKey.c_str()).c_str());
     CVarClear(StringHelper::Sprintf("%s.ShipDeviceIndex", mappingCvarKey.c_str()).c_str());

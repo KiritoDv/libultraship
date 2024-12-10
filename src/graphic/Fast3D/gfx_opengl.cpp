@@ -11,7 +11,6 @@
 #ifndef _LANGUAGE_C
 #define _LANGUAGE_C
 #endif
-#include "libultraship/libultra/gbi.h"
 
 #ifdef __MINGW32__
 #define FOR_WINDOWS 1
@@ -78,7 +77,6 @@ static GLuint opengl_vbo;
 #if defined(__APPLE__) || defined(USE_OPENGLES)
 static GLuint opengl_vao;
 #endif
-static bool current_depth_mask;
 
 static uint32_t frame_count;
 
@@ -86,6 +84,13 @@ static vector<Framebuffer> framebuffers;
 static size_t current_framebuffer;
 static float current_noise_scale;
 static FilteringMode current_filter_mode = FILTER_THREE_POINT;
+static int8_t current_depth_test;
+static int8_t current_depth_mask;
+static int8_t current_zmode_decal;
+static int8_t last_depth_test;
+static int8_t last_depth_mask;
+static int8_t last_zmode_decal;
+static bool srgb_mode = false;
 
 GLint max_msaa_level = 1;
 GLuint pixel_depth_rb, pixel_depth_fb;
@@ -153,7 +158,7 @@ static void append_line(char* buf, size_t* len, const char* str) {
 #define RAND_NOISE "((random(vec3(floor(gl_FragCoord.xy * noise_scale), float(frame_count))) + 1.0) / 2.0)"
 
 static const char* shader_item_to_str(uint32_t item, bool with_alpha, bool only_alpha, bool inputs_have_alpha,
-                                      bool hint_single_element) {
+                                      bool first_cycle, bool hint_single_element) {
     if (!only_alpha) {
         switch (item) {
             case SHADER_0:
@@ -169,17 +174,27 @@ static const char* shader_item_to_str(uint32_t item, bool with_alpha, bool only_
             case SHADER_INPUT_4:
                 return with_alpha || !inputs_have_alpha ? "vInput4" : "vInput4.rgb";
             case SHADER_TEXEL0:
-                return with_alpha ? "texVal0" : "texVal0.rgb";
+                return first_cycle ? (with_alpha ? "texVal0" : "texVal0.rgb")
+                                   : (with_alpha ? "texVal1" : "texVal1.rgb");
             case SHADER_TEXEL0A:
-                return hint_single_element ? "texVal0.a"
-                                           : (with_alpha ? "vec4(texVal0.a, texVal0.a, texVal0.a, texVal0.a)"
-                                                         : "vec3(texVal0.a, texVal0.a, texVal0.a)");
+                return first_cycle
+                           ? (hint_single_element ? "texVal0.a"
+                                                  : (with_alpha ? "vec4(texVal0.a, texVal0.a, texVal0.a, texVal0.a)"
+                                                                : "vec3(texVal0.a, texVal0.a, texVal0.a)"))
+                           : (hint_single_element ? "texVal1.a"
+                                                  : (with_alpha ? "vec4(texVal1.a, texVal1.a, texVal1.a, texVal1.a)"
+                                                                : "vec3(texVal1.a, texVal1.a, texVal1.a)"));
             case SHADER_TEXEL1A:
-                return hint_single_element ? "texVal1.a"
-                                           : (with_alpha ? "vec4(texVal1.a, texVal1.a, texVal1.a, texVal1.a)"
-                                                         : "vec3(texVal1.a, texVal1.a, texVal1.a)");
+                return first_cycle
+                           ? (hint_single_element ? "texVal1.a"
+                                                  : (with_alpha ? "vec4(texVal1.a, texVal1.a, texVal1.a, texVal1.a)"
+                                                                : "vec3(texVal1.a, texVal1.a, texVal1.a)"))
+                           : (hint_single_element ? "texVal0.a"
+                                                  : (with_alpha ? "vec4(texVal0.a, texVal0.a, texVal0.a, texVal0.a)"
+                                                                : "vec3(texVal0.a, texVal0.a, texVal0.a)"));
             case SHADER_TEXEL1:
-                return with_alpha ? "texVal1" : "texVal1.rgb";
+                return first_cycle ? (with_alpha ? "texVal1" : "texVal1.rgb")
+                                   : (with_alpha ? "texVal0" : "texVal0.rgb");
             case SHADER_COMBINED:
                 return with_alpha ? "texel" : "texel.rgb";
             case SHADER_NOISE:
@@ -201,13 +216,13 @@ static const char* shader_item_to_str(uint32_t item, bool with_alpha, bool only_
             case SHADER_INPUT_4:
                 return "vInput4.a";
             case SHADER_TEXEL0:
-                return "texVal0.a";
+                return first_cycle ? "texVal0.a" : "texVal1.a";
             case SHADER_TEXEL0A:
-                return "texVal0.a";
+                return first_cycle ? "texVal0.a" : "texVal1.a";
             case SHADER_TEXEL1A:
-                return "texVal1.a";
+                return first_cycle ? "texVal1.a" : "texVal0.a";
             case SHADER_TEXEL1:
-                return "texVal1.a";
+                return first_cycle ? "texVal1.a" : "texVal0.a";
             case SHADER_COMBINED:
                 return "texel.a";
             case SHADER_NOISE:
@@ -220,30 +235,40 @@ static const char* shader_item_to_str(uint32_t item, bool with_alpha, bool only_
 #undef RAND_NOISE
 
 static void append_formula(char* buf, size_t* len, uint8_t c[2][4], bool do_single, bool do_multiply, bool do_mix,
-                           bool with_alpha, bool only_alpha, bool opt_alpha) {
+                           bool with_alpha, bool only_alpha, bool opt_alpha, bool first_cycle) {
     if (do_single) {
-        append_str(buf, len, shader_item_to_str(c[only_alpha][3], with_alpha, only_alpha, opt_alpha, false));
+        append_str(buf, len,
+                   shader_item_to_str(c[only_alpha][3], with_alpha, only_alpha, opt_alpha, first_cycle, false));
     } else if (do_multiply) {
-        append_str(buf, len, shader_item_to_str(c[only_alpha][0], with_alpha, only_alpha, opt_alpha, false));
+        append_str(buf, len,
+                   shader_item_to_str(c[only_alpha][0], with_alpha, only_alpha, opt_alpha, first_cycle, false));
         append_str(buf, len, " * ");
-        append_str(buf, len, shader_item_to_str(c[only_alpha][2], with_alpha, only_alpha, opt_alpha, true));
+        append_str(buf, len,
+                   shader_item_to_str(c[only_alpha][2], with_alpha, only_alpha, opt_alpha, first_cycle, true));
     } else if (do_mix) {
         append_str(buf, len, "mix(");
-        append_str(buf, len, shader_item_to_str(c[only_alpha][1], with_alpha, only_alpha, opt_alpha, false));
+        append_str(buf, len,
+                   shader_item_to_str(c[only_alpha][1], with_alpha, only_alpha, opt_alpha, first_cycle, false));
         append_str(buf, len, ", ");
-        append_str(buf, len, shader_item_to_str(c[only_alpha][0], with_alpha, only_alpha, opt_alpha, false));
+        append_str(buf, len,
+                   shader_item_to_str(c[only_alpha][0], with_alpha, only_alpha, opt_alpha, first_cycle, false));
         append_str(buf, len, ", ");
-        append_str(buf, len, shader_item_to_str(c[only_alpha][2], with_alpha, only_alpha, opt_alpha, true));
+        append_str(buf, len,
+                   shader_item_to_str(c[only_alpha][2], with_alpha, only_alpha, opt_alpha, first_cycle, true));
         append_str(buf, len, ")");
     } else {
         append_str(buf, len, "(");
-        append_str(buf, len, shader_item_to_str(c[only_alpha][0], with_alpha, only_alpha, opt_alpha, false));
+        append_str(buf, len,
+                   shader_item_to_str(c[only_alpha][0], with_alpha, only_alpha, opt_alpha, first_cycle, false));
         append_str(buf, len, " - ");
-        append_str(buf, len, shader_item_to_str(c[only_alpha][1], with_alpha, only_alpha, opt_alpha, false));
+        append_str(buf, len,
+                   shader_item_to_str(c[only_alpha][1], with_alpha, only_alpha, opt_alpha, first_cycle, false));
         append_str(buf, len, ") * ");
-        append_str(buf, len, shader_item_to_str(c[only_alpha][2], with_alpha, only_alpha, opt_alpha, true));
+        append_str(buf, len,
+                   shader_item_to_str(c[only_alpha][2], with_alpha, only_alpha, opt_alpha, first_cycle, true));
         append_str(buf, len, " + ");
-        append_str(buf, len, shader_item_to_str(c[only_alpha][3], with_alpha, only_alpha, opt_alpha, false));
+        append_str(buf, len,
+                   shader_item_to_str(c[only_alpha][3], with_alpha, only_alpha, opt_alpha, first_cycle, false));
     }
 }
 
@@ -346,6 +371,9 @@ static struct ShaderProgram* gfx_opengl_create_and_load_new_shader(uint64_t shad
         vs_len += sprintf(vs_buf + vs_len, "vInput%d = aInput%d;\n", i + 1, i + 1);
     }
     append_line(vs_buf, &vs_len, "gl_Position = aVtxPos;");
+#if defined(USE_OPENGLES) // workaround for no GL_DEPTH_CLAMP
+    append_line(vs_buf, &vs_len, "gl_Position.z *= 0.3f;");
+#endif
     append_line(vs_buf, &vs_len, "}");
 
     // Fragment shader
@@ -454,6 +482,14 @@ static struct ShaderProgram* gfx_opengl_create_and_load_new_shader(uint64_t shad
     append_line(fs_buf, &fs_len, "out vec4 outColor;");
 #endif
 
+    if (srgb_mode) {
+        append_line(fs_buf, &fs_len, "vec4 fromLinear(vec4 linearRGB){");
+        append_line(fs_buf, &fs_len, "    bvec3 cutoff = lessThan(linearRGB.rgb, vec3(0.0031308));");
+        append_line(fs_buf, &fs_len, "    vec3 higher = vec3(1.055)*pow(linearRGB.rgb, vec3(1.0/2.4)) - vec3(0.055);");
+        append_line(fs_buf, &fs_len, "    vec3 lower = linearRGB.rgb * vec3(12.92);");
+        append_line(fs_buf, &fs_len, "return vec4(mix(higher, lower, cutoff), linearRGB.a);}");
+    }
+
     append_line(fs_buf, &fs_len, "void main() {");
 
     // Reference approach to color wrapping as per GLideN64
@@ -517,29 +553,41 @@ static struct ShaderProgram* gfx_opengl_create_and_load_new_shader(uint64_t shad
 
     append_line(fs_buf, &fs_len, cc_features.opt_alpha ? "vec4 texel;" : "vec3 texel;");
     for (int c = 0; c < (cc_features.opt_2cyc ? 2 : 1); c++) {
+        if (c == 1) {
+            if (cc_features.opt_alpha) {
+                if (cc_features.c[c][1][2] == SHADER_COMBINED) {
+                    append_line(fs_buf, &fs_len, "texel.a = WRAP(texel.a, -1.01, 1.01);");
+                } else {
+                    append_line(fs_buf, &fs_len, "texel.a = WRAP(texel.a, -0.51, 1.51);");
+                }
+            }
+
+            if (cc_features.c[c][0][2] == SHADER_COMBINED) {
+                append_line(fs_buf, &fs_len, "texel.rgb = WRAP(texel.rgb, -1.01, 1.01);");
+            } else {
+                append_line(fs_buf, &fs_len, "texel.rgb = WRAP(texel.rgb, -0.51, 1.51);");
+            }
+        }
+
         append_str(fs_buf, &fs_len, "texel = ");
         if (!cc_features.color_alpha_same[c] && cc_features.opt_alpha) {
             append_str(fs_buf, &fs_len, "vec4(");
             append_formula(fs_buf, &fs_len, cc_features.c[c], cc_features.do_single[c][0],
-                           cc_features.do_multiply[c][0], cc_features.do_mix[c][0], false, false, true);
+                           cc_features.do_multiply[c][0], cc_features.do_mix[c][0], false, false, true, c == 0);
             append_str(fs_buf, &fs_len, ", ");
             append_formula(fs_buf, &fs_len, cc_features.c[c], cc_features.do_single[c][1],
-                           cc_features.do_multiply[c][1], cc_features.do_mix[c][1], true, true, true);
+                           cc_features.do_multiply[c][1], cc_features.do_mix[c][1], true, true, true, c == 0);
             append_str(fs_buf, &fs_len, ")");
         } else {
             append_formula(fs_buf, &fs_len, cc_features.c[c], cc_features.do_single[c][0],
                            cc_features.do_multiply[c][0], cc_features.do_mix[c][0], cc_features.opt_alpha, false,
-                           cc_features.opt_alpha);
+                           cc_features.opt_alpha, c == 0);
         }
         append_line(fs_buf, &fs_len, ";");
-
-        if (c == 0) {
-            append_str(fs_buf, &fs_len, "texel.rgb = WRAP(texel.rgb, -1.01, 1.01);");
-        }
     }
 
-    append_str(fs_buf, &fs_len, "texel.rgb = WRAP(texel.rgb, -0.51, 1.51);");
-    append_str(fs_buf, &fs_len, "texel.rgb = clamp(texel.rgb, 0.0, 1.0);");
+    append_str(fs_buf, &fs_len, "texel = WRAP(texel, -0.51, 1.51);");
+    append_str(fs_buf, &fs_len, "texel = clamp(texel, 0.0, 1.0);");
     // TODO discard if alpha is 0?
     if (cc_features.opt_fog) {
         if (cc_features.opt_alpha) {
@@ -584,6 +632,15 @@ static struct ShaderProgram* gfx_opengl_create_and_load_new_shader(uint64_t shad
         append_line(fs_buf, &fs_len, "gl_FragColor = vec4(texel, 1.0);");
 #endif
     }
+
+    if (srgb_mode) {
+#if defined(__APPLE__) || defined(USE_OPENGLES)
+        append_line(fs_buf, &fs_len, "outColor = fromLinear(outColor);");
+#else
+        append_line(fs_buf, &fs_len, "gl_FragColor = fromLinear(gl_FragColor);");
+#endif
+    }
+
     append_line(fs_buf, &fs_len, "}");
 
     vs_buf[vs_len] = '\0';
@@ -780,48 +837,12 @@ static void gfx_opengl_set_sampler_parameters(int tile, bool linear_filter, uint
 }
 
 static void gfx_opengl_set_depth_test_and_mask(bool depth_test, bool z_upd) {
-    if (depth_test || z_upd) {
-        glEnable(GL_DEPTH_TEST);
-        glDepthMask(z_upd ? GL_TRUE : GL_FALSE);
-        glDepthFunc(depth_test ? GL_LEQUAL : GL_ALWAYS);
-        current_depth_mask = z_upd;
-    } else {
-        glDisable(GL_DEPTH_TEST);
-    }
+    current_depth_test = depth_test;
+    current_depth_mask = z_upd;
 }
 
 static void gfx_opengl_set_zmode_decal(bool zmode_decal) {
-    if (zmode_decal) {
-
-        // SSDB = SlopeScaledDepthBias 120 leads to -2 at 240p which is the same as N64 mode which has very little
-        // fighting
-        const int n64modeFactor = 120;
-        const int noVanishFactor = 100;
-        GLfloat SSDB = -2;
-        switch (CVarGetInteger("gZFightingMode", 0)) {
-            // scaled z-fighting (N64 mode like)
-            case 1:
-                if (framebuffers.size() > current_framebuffer) { // safety check for vector size can probably be removed
-                    SSDB = -1.0f * (GLfloat)framebuffers[current_framebuffer].height / n64modeFactor;
-                }
-                break;
-            // no vanishing paths
-            case 2:
-                if (framebuffers.size() > current_framebuffer) { // safety check for vector size can probably be removed
-                    SSDB = -1.0f * (GLfloat)framebuffers[current_framebuffer].height / noVanishFactor;
-                }
-                break;
-            // disabled
-            case 0:
-            default:
-                SSDB = -2;
-        }
-        glPolygonOffset(SSDB, -2);
-        glEnable(GL_POLYGON_OFFSET_FILL);
-    } else {
-        glPolygonOffset(0, 0);
-        glDisable(GL_POLYGON_OFFSET_FILL);
-    }
+    current_zmode_decal = zmode_decal;
 }
 
 static void gfx_opengl_set_viewport(int x, int y, int width, int height) {
@@ -841,6 +862,55 @@ static void gfx_opengl_set_use_alpha(bool use_alpha) {
 }
 
 static void gfx_opengl_draw_triangles(float buf_vbo[], size_t buf_vbo_len, size_t buf_vbo_num_tris) {
+    if (current_depth_test != last_depth_test || current_depth_mask != last_depth_mask) {
+        last_depth_test = current_depth_test;
+        last_depth_mask = current_depth_mask;
+
+        if (current_depth_test || last_depth_mask) {
+            glEnable(GL_DEPTH_TEST);
+            glDepthMask(last_depth_mask ? GL_TRUE : GL_FALSE);
+            glDepthFunc(current_depth_test ? (current_zmode_decal ? GL_LEQUAL : GL_LESS) : GL_ALWAYS);
+        } else {
+            glDisable(GL_DEPTH_TEST);
+        }
+    }
+
+    if (current_zmode_decal != last_zmode_decal) {
+        last_zmode_decal = current_zmode_decal;
+        if (current_zmode_decal) {
+            // SSDB = SlopeScaledDepthBias 120 leads to -2 at 240p which is the same as N64 mode which has very little
+            // fighting
+            const int n64modeFactor = 120;
+            const int noVanishFactor = 100;
+            GLfloat SSDB = -2;
+            switch (CVarGetInteger(CVAR_Z_FIGHTING_MODE, 0)) {
+                // scaled z-fighting (N64 mode like)
+                case 1:
+                    if (framebuffers.size() >
+                        current_framebuffer) { // safety check for vector size can probably be removed
+                        SSDB = -1.0f * (GLfloat)framebuffers[current_framebuffer].height / n64modeFactor;
+                    }
+                    break;
+                // no vanishing paths
+                case 2:
+                    if (framebuffers.size() >
+                        current_framebuffer) { // safety check for vector size can probably be removed
+                        SSDB = -1.0f * (GLfloat)framebuffers[current_framebuffer].height / noVanishFactor;
+                    }
+                    break;
+                // disabled
+                case 0:
+                default:
+                    SSDB = -2;
+            }
+            glPolygonOffset(SSDB, -2);
+            glEnable(GL_POLYGON_OFFSET_FILL);
+        } else {
+            glPolygonOffset(0, 0);
+            glDisable(GL_POLYGON_OFFSET_FILL);
+        }
+    }
+
     // printf("flushing %d tris\n", buf_vbo_num_tris);
     glBufferData(GL_ARRAY_BUFFER, sizeof(float) * buf_vbo_len, buf_vbo, GL_STREAM_DRAW);
     glDrawArrays(GL_TRIANGLES, 0, 3 * buf_vbo_num_tris);
@@ -989,11 +1059,11 @@ void gfx_opengl_start_draw_to_framebuffer(int fb_id, float noise_scale) {
     current_framebuffer = fb_id;
 }
 
-void gfx_opengl_clear_framebuffer() {
+void gfx_opengl_clear_framebuffer(bool color, bool depth) {
     glDisable(GL_SCISSOR_TEST);
     glDepthMask(GL_TRUE);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glClear((color ? GL_COLOR_BUFFER_BIT : 0) | (depth ? GL_DEPTH_BUFFER_BIT : 0));
     glDepthMask(current_depth_mask ? GL_TRUE : GL_FALSE);
     glEnable(GL_SCISSOR_TEST);
 }
@@ -1178,6 +1248,10 @@ FilteringMode gfx_opengl_get_texture_filter(void) {
     return current_filter_mode;
 }
 
+void gfx_opengl_enable_srgb_mode(void) {
+    srgb_mode = true;
+}
+
 struct GfxRenderingAPI gfx_opengl_api = { gfx_opengl_get_name,
                                           gfx_opengl_get_max_texture_size,
                                           gfx_opengl_get_clip_parameters,
@@ -1213,6 +1287,7 @@ struct GfxRenderingAPI gfx_opengl_api = { gfx_opengl_get_name,
                                           gfx_opengl_select_texture_fb,
                                           gfx_opengl_delete_texture,
                                           gfx_opengl_set_texture_filter,
-                                          gfx_opengl_get_texture_filter };
+                                          gfx_opengl_get_texture_filter,
+                                          gfx_opengl_enable_srgb_mode };
 
 #endif

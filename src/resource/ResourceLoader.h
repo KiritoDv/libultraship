@@ -32,7 +32,7 @@ class ResourceLoader {
     ResourceLoader();
     ~ResourceLoader();
 
-    std::shared_ptr<Ship::IResource> LoadResource(std::shared_ptr<Ship::File> fileToLoad);
+    std::shared_ptr<IResource> LoadResource(std::shared_ptr<File> fileToLoad);
     bool RegisterResourceFactory(std::shared_ptr<ResourceFactory> factory, uint32_t format, std::string typeName,
                                  uint32_t type, uint32_t version);
 
@@ -44,6 +44,7 @@ class ResourceLoader {
     std::shared_ptr<ResourceFactory> GetFactory(uint32_t format, std::string typeName, uint32_t version);
 
   private:
+    std::string DecodeASCII(uint32_t value);
     std::unordered_map<std::string, uint32_t> mResourceTypes;
     std::unordered_map<ResourceFactoryKey, std::shared_ptr<ResourceFactory>, ResourceFactoryKeyHash> mFactories;
 };

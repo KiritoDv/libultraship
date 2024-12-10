@@ -28,7 +28,7 @@
 #define MTL_PRIVATE_IMPLEMENTATION
 #include <Metal/Metal.hpp>
 #include <SDL_render.h>
-#include <ImGui/backends/imgui_impl_metal.h>
+#include <imgui_impl_metal.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/fmt/fmt.h>
 
@@ -36,7 +36,6 @@
 #include "gfx_pc.h"
 #include "gfx_metal_shader.h"
 
-#include "libultraship/libultra/gbi.h"
 #include "libultraship/libultra/abi.h"
 #include "public/bridge/consolevariablebridge.h"
 
@@ -164,6 +163,8 @@ static struct {
     int8_t depth_test;
     int8_t depth_mask;
     int8_t zmode_decal;
+    bool srgb_mode = false;
+    bool non_uniform_threadgroup_supported;
 } mctx;
 
 // MARK: - Helpers
@@ -199,6 +200,16 @@ bool Metal_IsSupported() {
 #endif
 }
 
+bool Metal_NonUniformThreadGroupSupported() {
+#ifdef __IOS__
+    // iOS devices with A11 or later support dispatch threads
+    return mctx.device->supportsFamily(MTL::GPUFamilyApple4);
+#else
+    // macOS devices with Metal 2 support dispatch threads
+    return mctx.device->supportsFamily(MTL::GPUFamilyMac2);
+#endif
+}
+
 bool Metal_Init(SDL_Renderer* renderer) {
     mctx.renderer = renderer;
     NS::AutoreleasePool* autorelease_pool = NS::AutoreleasePool::alloc()->init();
@@ -216,17 +227,20 @@ bool Metal_Init(SDL_Renderer* renderer) {
     }
 
     autorelease_pool->release();
+    mctx.non_uniform_threadgroup_supported = Metal_NonUniformThreadGroupSupported();
 
     return ImGui_ImplMetal_Init(mctx.device);
 }
 
 static void gfx_metal_setup_screen_framebuffer(uint32_t width, uint32_t height);
 
-void Metal_NewFrame(SDL_Renderer* renderer) {
+void Metal_SetupFrame(SDL_Renderer* renderer) {
     int width, height;
     SDL_GetRendererOutputSize(renderer, &width, &height);
     gfx_metal_setup_screen_framebuffer(width, height);
+}
 
+void Metal_NewFrame(SDL_Renderer* renderer) {
     MTL::RenderPassDescriptor* current_render_pass = mctx.framebuffers[0].render_pass_descriptor;
     ImGui_ImplMetal_NewFrame(current_render_pass);
 }
@@ -358,7 +372,8 @@ static struct ShaderProgram* gfx_metal_create_and_load_new_shader(uint64_t shade
     pipeline_descriptor->setFragmentFunction(fragmentFunc);
     pipeline_descriptor->setVertexDescriptor(vertex_descriptor);
 
-    pipeline_descriptor->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatBGRA8Unorm);
+    pipeline_descriptor->colorAttachments()->object(0)->setPixelFormat(mctx.srgb_mode ? MTL::PixelFormatBGRA8Unorm_sRGB
+                                                                                      : MTL::PixelFormatBGRA8Unorm);
     pipeline_descriptor->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
     if (cc_features.opt_alpha) {
         pipeline_descriptor->colorAttachments()->object(0)->setBlendingEnabled(true);
@@ -549,8 +564,9 @@ static void gfx_metal_draw_triangles(float buf_vbo[], size_t buf_vbo_len, size_t
 
         MTL::DepthStencilDescriptor* depth_descriptor = MTL::DepthStencilDescriptor::alloc()->init();
         depth_descriptor->setDepthWriteEnabled(mctx.depth_mask);
-        depth_descriptor->setDepthCompareFunction(mctx.depth_test ? MTL::CompareFunctionLessEqual
-                                                                  : MTL::CompareFunctionAlways);
+        depth_descriptor->setDepthCompareFunction(
+            mctx.depth_test ? (mctx.zmode_decal ? MTL::CompareFunctionLessEqual : MTL::CompareFunctionLess)
+                            : MTL::CompareFunctionAlways);
 
         MTL::DepthStencilState* depth_stencil_state = mctx.device->newDepthStencilState(depth_descriptor);
         current_framebuffer.command_encoder->setDepthStencilState(depth_stencil_state);
@@ -737,11 +753,9 @@ static void gfx_metal_setup_screen_framebuffer(uint32_t width, uint32_t height) 
     tex.texture = mctx.current_drawable->texture();
 
     MTL::RenderPassDescriptor* render_pass_descriptor = MTL::RenderPassDescriptor::renderPassDescriptor();
-    MTL::ClearColor clear_color = MTL::ClearColor::Make(0, 0, 0, 1);
     render_pass_descriptor->colorAttachments()->object(0)->setTexture(tex.texture);
-    render_pass_descriptor->colorAttachments()->object(0)->setLoadAction(MTL::LoadActionClear);
+    render_pass_descriptor->colorAttachments()->object(0)->setLoadAction(MTL::LoadActionLoad);
     render_pass_descriptor->colorAttachments()->object(0)->setStoreAction(MTL::StoreActionStore);
-    render_pass_descriptor->colorAttachments()->object(0)->setClearColor(clear_color);
 
     tex.width = width;
     tex.height = height;
@@ -768,7 +782,7 @@ static void gfx_metal_setup_screen_framebuffer(uint32_t width, uint32_t height) 
     }
 
     render_pass_descriptor->depthAttachment()->setTexture(fb.depth_texture);
-    render_pass_descriptor->depthAttachment()->setLoadAction(MTL::LoadActionClear);
+    render_pass_descriptor->depthAttachment()->setLoadAction(MTL::LoadActionLoad);
     render_pass_descriptor->depthAttachment()->setStoreAction(MTL::StoreActionStore);
     render_pass_descriptor->depthAttachment()->setClearDepth(1);
 
@@ -816,7 +830,7 @@ static void gfx_metal_update_framebuffer_parameters(int fb_id, uint32_t width, u
         tex_descriptor->setHeight(height);
         tex_descriptor->setSampleCount(1);
         tex_descriptor->setMipmapLevelCount(1);
-        tex_descriptor->setPixelFormat(MTL::PixelFormatBGRA8Unorm);
+        tex_descriptor->setPixelFormat(mctx.srgb_mode ? MTL::PixelFormatBGRA8Unorm_sRGB : MTL::PixelFormatBGRA8Unorm);
         tex_descriptor->setUsage((render_target ? MTL::TextureUsageRenderTarget : 0) | MTL::TextureUsageShaderRead);
 
         if (tex.texture != nullptr)
@@ -840,20 +854,17 @@ static void gfx_metal_update_framebuffer_parameters(int fb_id, uint32_t width, u
 
             bool fb_msaa_enabled = (msaa_level > 1);
             bool game_msaa_enabled = CVarGetInteger("gMSAAValue", 1) > 1;
-            MTL::ClearColor clear_color = MTL::ClearColor::Make(0.0, 0.0, 0.0, 1.0);
 
             if (fb_msaa_enabled) {
                 render_pass_descriptor->colorAttachments()->object(0)->setTexture(tex.msaaTexture);
                 render_pass_descriptor->colorAttachments()->object(0)->setResolveTexture(tex.texture);
-                render_pass_descriptor->colorAttachments()->object(0)->setLoadAction(MTL::LoadActionClear);
+                render_pass_descriptor->colorAttachments()->object(0)->setLoadAction(MTL::LoadActionLoad);
                 render_pass_descriptor->colorAttachments()->object(0)->setStoreAction(
                     MTL::StoreActionStoreAndMultisampleResolve);
-                render_pass_descriptor->colorAttachments()->object(0)->setClearColor(clear_color);
             } else {
                 render_pass_descriptor->colorAttachments()->object(0)->setTexture(tex.texture);
-                render_pass_descriptor->colorAttachments()->object(0)->setLoadAction(MTL::LoadActionClear);
+                render_pass_descriptor->colorAttachments()->object(0)->setLoadAction(MTL::LoadActionLoad);
                 render_pass_descriptor->colorAttachments()->object(0)->setStoreAction(MTL::StoreActionStore);
-                render_pass_descriptor->colorAttachments()->object(0)->setClearColor(clear_color);
             }
 
             if (fb.render_pass_descriptor != nullptr)
@@ -899,12 +910,12 @@ static void gfx_metal_update_framebuffer_parameters(int fb_id, uint32_t width, u
         if (msaa_level > 1) {
             fb.render_pass_descriptor->depthAttachment()->setTexture(fb.msaa_depth_texture);
             fb.render_pass_descriptor->depthAttachment()->setResolveTexture(fb.depth_texture);
-            fb.render_pass_descriptor->depthAttachment()->setLoadAction(MTL::LoadActionDontCare);
+            fb.render_pass_descriptor->depthAttachment()->setLoadAction(MTL::LoadActionLoad);
             fb.render_pass_descriptor->depthAttachment()->setStoreAction(MTL::StoreActionMultisampleResolve);
             fb.render_pass_descriptor->depthAttachment()->setClearDepth(1);
         } else {
             fb.render_pass_descriptor->depthAttachment()->setTexture(fb.depth_texture);
-            fb.render_pass_descriptor->depthAttachment()->setLoadAction(MTL::LoadActionDontCare);
+            fb.render_pass_descriptor->depthAttachment()->setLoadAction(MTL::LoadActionLoad);
             fb.render_pass_descriptor->depthAttachment()->setStoreAction(MTL::StoreActionStore);
             fb.render_pass_descriptor->depthAttachment()->setClearDepth(1);
         }
@@ -947,7 +958,58 @@ void gfx_metal_start_draw_to_framebuffer(int fb_id, float noise_scale) {
     memcpy(mctx.frame_uniform_buffer->contents(), &mctx.frame_uniforms, sizeof(FrameUniforms));
 }
 
-void gfx_metal_clear_framebuffer(void) {
+void gfx_metal_clear_framebuffer(bool color, bool depth) {
+    if (!color && !depth) {
+        return;
+    }
+
+    auto& framebuffer = mctx.framebuffers[mctx.current_framebuffer];
+
+    // End the current render encoder
+    framebuffer.command_encoder->endEncoding();
+
+    // Track the original load action and set the next load actions to Load to leverage the blit results
+    MTL::RenderPassColorAttachmentDescriptor* srcColorAttachment =
+        framebuffer.render_pass_descriptor->colorAttachments()->object(0);
+    MTL::LoadAction origLoadAction = srcColorAttachment->loadAction();
+    if (color) {
+        srcColorAttachment->setLoadAction(MTL::LoadActionClear);
+    }
+
+    MTL::RenderPassDepthAttachmentDescriptor* srcDepthAttachment =
+        framebuffer.render_pass_descriptor->depthAttachment();
+    MTL::LoadAction origDepthLoadAction = MTL::LoadActionDontCare;
+    if (depth && framebuffer.has_depth_buffer) {
+        origDepthLoadAction = srcDepthAttachment->loadAction();
+        srcDepthAttachment->setLoadAction(MTL::LoadActionClear);
+    }
+
+    // Create a new render encoder back onto the framebuffer
+    framebuffer.command_encoder = framebuffer.command_buffer->renderCommandEncoder(framebuffer.render_pass_descriptor);
+
+    std::string fbce_label = fmt::format("FrameBuffer {} Command Encoder After Clear", mctx.current_framebuffer);
+    framebuffer.command_encoder->setLabel(NS::String::string(fbce_label.c_str(), NS::UTF8StringEncoding));
+    framebuffer.command_encoder->setDepthClipMode(MTL::DepthClipModeClamp);
+    framebuffer.command_encoder->setViewport(framebuffer.viewport);
+    framebuffer.command_encoder->setScissorRect(framebuffer.scissor_rect);
+
+    // Now that the command encoder is started, we set the original load actions back for the next frame's use
+    srcColorAttachment->setLoadAction(origLoadAction);
+    if (depth && framebuffer.has_depth_buffer) {
+        srcDepthAttachment->setLoadAction(origDepthLoadAction);
+    }
+
+    // Reset the framebuffer so the encoder is setup again when rendering triangles
+    framebuffer.has_bounded_vertex_buffer = false;
+    framebuffer.has_bounded_fragment_buffer = false;
+    framebuffer.last_shader_program = nullptr;
+    for (int i = 0; i < SHADER_MAX_TEXTURES; i++) {
+        framebuffer.last_bound_textures[i] = nullptr;
+        framebuffer.last_bound_samplers[i] = nullptr;
+    }
+    framebuffer.last_depth_test = -1;
+    framebuffer.last_depth_mask = -1;
+    framebuffer.last_zmode_decal = -1;
 }
 
 void gfx_metal_resolve_msaa_color_buffer(int fb_id_target, int fb_id_source) {
@@ -1051,7 +1113,13 @@ gfx_metal_get_pixel_depth(int fb_id, const std::set<std::pair<float, float>>& co
     MTL::Size thread_group_size = MTL::Size::Make(1, 1, 1);
     MTL::Size thread_group_count = MTL::Size::Make(coordinates.size(), 1, 1);
 
-    compute_encoder->dispatchThreads(thread_group_count, thread_group_size);
+    // We validate if the device supports non-uniform threadgroup sizes
+    if (mctx.non_uniform_threadgroup_supported) {
+        compute_encoder->dispatchThreads(thread_group_count, thread_group_size);
+    } else {
+        compute_encoder->dispatchThreadgroups(thread_group_count, thread_group_size);
+    }
+
     compute_encoder->endEncoding();
 
     command_buffer->commit();
@@ -1113,11 +1181,19 @@ void gfx_metal_copy_framebuffer(int fb_dst_id, int fb_src_id, int srcX0, int src
                                   target_origin);
     blit_encoder->endEncoding();
 
-    // Track the original load action and set the next load action to Load to leverage the blit results
+    // Track the original load action and set the next load actions to Load to leverage the blit results
     MTL::RenderPassColorAttachmentDescriptor* srcColorAttachment =
         source_framebuffer.render_pass_descriptor->colorAttachments()->object(0);
     MTL::LoadAction origLoadAction = srcColorAttachment->loadAction();
     srcColorAttachment->setLoadAction(MTL::LoadActionLoad);
+
+    MTL::RenderPassDepthAttachmentDescriptor* srcDepthAttachment =
+        source_framebuffer.render_pass_descriptor->depthAttachment();
+    MTL::LoadAction origDepthLoadAction = MTL::LoadActionDontCare;
+    if (source_framebuffer.has_depth_buffer) {
+        origDepthLoadAction = srcDepthAttachment->loadAction();
+        srcDepthAttachment->setLoadAction(MTL::LoadActionLoad);
+    }
 
     // Create a new render encoder back onto the framebuffer
     source_framebuffer.command_encoder =
@@ -1129,8 +1205,11 @@ void gfx_metal_copy_framebuffer(int fb_dst_id, int fb_src_id, int srcX0, int src
     source_framebuffer.command_encoder->setViewport(source_framebuffer.viewport);
     source_framebuffer.command_encoder->setScissorRect(source_framebuffer.scissor_rect);
 
-    // Now that the command encoder is started, we set the original load action back for the next frame's use
+    // Now that the command encoder is started, we set the original load actions back for the next frame's use
     srcColorAttachment->setLoadAction(origLoadAction);
+    if (source_framebuffer.has_depth_buffer) {
+        srcDepthAttachment->setLoadAction(origDepthLoadAction);
+    }
 
     // Reset the framebuffer so the encoder is setup again when rendering triangles
     source_framebuffer.has_bounded_vertex_buffer = false;
@@ -1176,7 +1255,12 @@ void gfx_metal_read_framebuffer_to_cpu(int fb_id, uint32_t width, uint32_t heigh
     MTL::Size thread_group_size = MTL::Size::Make(1, 1, 1);
     MTL::Size thread_group_count = MTL::Size::Make(width, height, 1);
 
-    compute_encoder->dispatchThreads(thread_group_count, thread_group_size);
+    // We validate if the device supports non-uniform threadgroup sizes
+    if (mctx.non_uniform_threadgroup_supported) {
+        compute_encoder->dispatchThreads(thread_group_count, thread_group_size);
+    } else {
+        compute_encoder->dispatchThreadgroups(thread_group_count, thread_group_size);
+    }
     compute_encoder->endEncoding();
 
     // Use a completion handler to wait for the GPU to be done without blocking the thread
@@ -1205,6 +1289,10 @@ FilteringMode gfx_metal_get_texture_filter(void) {
 
 ImTextureID gfx_metal_get_texture_by_id(int fb_id) {
     return (void*)mctx.textures[fb_id].texture;
+}
+
+void gfx_metal_enable_srgb_mode(void) {
+    mctx.srgb_mode = true;
 }
 
 struct GfxRenderingAPI gfx_metal_api = { gfx_metal_get_name,
@@ -1242,5 +1330,6 @@ struct GfxRenderingAPI gfx_metal_api = { gfx_metal_get_name,
                                          gfx_metal_select_texture_fb,
                                          gfx_metal_delete_texture,
                                          gfx_metal_set_texture_filter,
-                                         gfx_metal_get_texture_filter };
+                                         gfx_metal_get_texture_filter,
+                                         gfx_metal_enable_srgb_mode };
 #endif

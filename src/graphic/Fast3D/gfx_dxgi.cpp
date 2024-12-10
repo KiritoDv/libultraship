@@ -21,7 +21,10 @@
 #ifndef _LANGUAGE_C
 #define _LANGUAGE_C
 #endif
-#include "libultraship/libultraship.h"
+
+#include "config/ConsoleVariable.h"
+#include "config/Config.h"
+#include "Context.h"
 
 #include "gfx_window_manager_api.h"
 #include "gfx_rendering_api.h"
@@ -37,6 +40,9 @@
 
 #define FRAME_INTERVAL_NS_NUMERATOR 1000000000
 #define FRAME_INTERVAL_NS_DENOMINATOR (dxgi.target_fps)
+
+#define NANOSECOND_IN_SECOND 1000000000
+#define _100NANOSECONDS_IN_SECOND 10000000
 
 using namespace Microsoft::WRL; // For ComPtr
 
@@ -82,10 +88,11 @@ static struct {
     bool use_timer;
     bool tearing_support;
     bool is_vsync_enabled;
+    bool mouse_pressed[5];
+    float mouse_wheel[2];
     LARGE_INTEGER previous_present_time;
 
     void (*on_fullscreen_changed)(bool is_now_fullscreen);
-    void (*run_one_game_iter)(void);
     bool (*on_key_down)(int scancode);
     bool (*on_key_up)(int scancode);
     void (*on_all_keys_up)(void);
@@ -298,7 +305,7 @@ static LRESULT CALLBACK gfx_dxgi_wnd_proc(HWND h_wnd, UINT message, WPARAM w_par
     char fileName[256];
     Ship::WindowEvent event_impl;
     event_impl.Win32 = { h_wnd, static_cast<int>(message), static_cast<int>(w_param), static_cast<int>(l_param) };
-    Ship::Context::GetInstance()->GetWindow()->GetGui()->Update(event_impl);
+    Ship::Context::GetInstance()->GetWindow()->GetGui()->HandleWindowEvents(event_impl);
     std::tuple<HMONITOR, RECT, BOOL> newMonitor;
     switch (message) {
         case WM_SIZE:
@@ -351,11 +358,40 @@ static LRESULT CALLBACK gfx_dxgi_wnd_proc(HWND h_wnd, UINT message, WPARAM w_par
         case WM_KEYUP:
             onkeyup(w_param, l_param);
             break;
+        case WM_LBUTTONDOWN:
+            dxgi.mouse_pressed[0] = true;
+            break;
+        case WM_LBUTTONUP:
+            dxgi.mouse_pressed[0] = false;
+            break;
+        case WM_MBUTTONDOWN:
+            dxgi.mouse_pressed[1] = true;
+            break;
+        case WM_MBUTTONUP:
+            dxgi.mouse_pressed[1] = false;
+            break;
+        case WM_RBUTTONDOWN:
+            dxgi.mouse_pressed[2] = true;
+            break;
+        case WM_RBUTTONUP:
+            dxgi.mouse_pressed[2] = false;
+            break;
+        case WM_XBUTTONDOWN:
+            dxgi.mouse_pressed[2 + GET_XBUTTON_WPARAM(w_param)] = true;
+            break;
+        case WM_XBUTTONUP:
+            dxgi.mouse_pressed[2 + GET_XBUTTON_WPARAM(w_param)] = false;
+            break;
+        case WM_MOUSEWHEEL:
+            dxgi.mouse_wheel[0] = GET_WHEEL_DELTA_WPARAM(w_param) / WHEEL_DELTA;
+            dxgi.mouse_wheel[1] = 0;
+            break;
         case WM_DROPFILES:
             DragQueryFileA((HDROP)w_param, 0, fileName, 256);
-            CVarSetString("gDroppedFile", fileName);
-            CVarSetInteger("gNewFileDropped", 1);
-            CVarSave();
+            Ship::Context::GetInstance()->GetConsoleVariables()->SetString(CVAR_DROPPED_FILE, fileName);
+            Ship::Context::GetInstance()->GetConsoleVariables()->SetInteger(CVAR_NEW_FILE_DROPPED, 1);
+            Ship::Context::GetInstance()->GetConsoleVariables()->Save();
+
             break;
         case WM_DISPLAYCHANGE:
             dxgi.monitor_list = GetMonitorList();
@@ -479,6 +515,46 @@ static void gfx_dxgi_set_cursor_visibility(bool visible) {
     }
 }
 
+static void gfx_dxgi_get_mouse_pos(int32_t* x, int32_t* y) {
+    POINT p;
+    GetCursorPos(&p);
+    ScreenToClient(dxgi.h_wnd, &p);
+    *x = p.x;
+    *y = p.y;
+}
+
+static void gfx_dxgi_get_mouse_delta(int32_t* x, int32_t* y) {
+    POINT p;
+    GetCursorPos(&p);
+    ScreenToClient(dxgi.h_wnd, &p);
+    *x = p.x - dxgi.current_width / 2;
+    *y = p.y - dxgi.current_height / 2;
+    SetCursorPos(dxgi.current_width / 2, dxgi.current_height / 2);
+}
+
+static void gfx_dxgi_get_mouse_wheel(float* x, float* y) {
+    *x = dxgi.mouse_wheel[0];
+    *y = dxgi.mouse_wheel[1];
+    dxgi.mouse_wheel[0] = 0;
+    dxgi.mouse_wheel[1] = 0;
+}
+
+static bool gfx_dxgi_get_mouse_state(uint32_t btn) {
+    return dxgi.mouse_pressed[btn];
+}
+
+static void gfx_dxgi_set_mouse_capture(bool capture) {
+    if (capture) {
+        SetCapture(dxgi.h_wnd);
+    } else {
+        ReleaseCapture();
+    }
+}
+
+static bool gfx_dxgi_is_mouse_captured() {
+    return (GetCapture() != NULL);
+}
+
 static void gfx_dxgi_set_fullscreen(bool enable) {
     toggle_borderless_window_full_screen(enable, true);
 }
@@ -492,13 +568,6 @@ static void gfx_dxgi_set_keyboard_callbacks(bool (*on_key_down)(int scancode), b
     dxgi.on_key_down = on_key_down;
     dxgi.on_key_up = on_key_up;
     dxgi.on_all_keys_up = on_all_keys_up;
-}
-
-static void gfx_dxgi_main_loop(void (*run_one_game_iter)(void)) {
-    dxgi.run_one_game_iter = run_one_game_iter;
-    while (dxgi.is_running) {
-        dxgi.run_one_game_iter();
-    }
 }
 
 static void gfx_dxgi_get_dimensions(uint32_t* width, uint32_t* height, int32_t* posX, int32_t* posY) {
@@ -521,13 +590,12 @@ static void gfx_dxgi_handle_events(void) {
 }
 
 static uint64_t qpc_to_ns(uint64_t qpc) {
-    qpc *= 1000000000;
-    return qpc / dxgi.qpc_freq;
+    return qpc / dxgi.qpc_freq * NANOSECOND_IN_SECOND + qpc % dxgi.qpc_freq * NANOSECOND_IN_SECOND / dxgi.qpc_freq;
 }
 
 static uint64_t qpc_to_100ns(uint64_t qpc) {
-    qpc *= 10000000;
-    return qpc / dxgi.qpc_freq;
+    return qpc / dxgi.qpc_freq * _100NANOSECONDS_IN_SECOND +
+           qpc % dxgi.qpc_freq * _100NANOSECONDS_IN_SECOND / dxgi.qpc_freq;
 }
 
 static bool gfx_dxgi_start_frame(void) {
@@ -667,9 +735,11 @@ static bool gfx_dxgi_start_frame(void) {
     // dxgi.length_in_vsync_frames is used as present interval. Present interval >1 (aka fractional V-Sync)
     // breaks VRR and introduces even more input lag than capping via normal V-Sync does.
     // Get the present interval the user wants instead (V-Sync toggle).
-    if (dxgi.is_vsync_enabled != CVarGetInteger("gVsyncEnabled", 1)) {
+    if (dxgi.is_vsync_enabled !=
+        Ship::Context::GetInstance()->GetConsoleVariables()->GetInteger(CVAR_VSYNC_ENABLED, 1)) {
         // Make sure only 0 or 1 is set, as present interval technically accepts a range from 0 to 4.
-        dxgi.is_vsync_enabled = !!CVarGetInteger("gVsyncEnabled", 1);
+        dxgi.is_vsync_enabled =
+            !!Ship::Context::GetInstance()->GetConsoleVariables()->GetInteger(CVAR_VSYNC_ENABLED, 1);
     }
     dxgi.length_in_vsync_frames = dxgi.is_vsync_enabled;
     return true;
@@ -701,12 +771,14 @@ static void gfx_dxgi_swap_buffers_begin(void) {
             li.QuadPart = -left;
             SetWaitableTimer(dxgi.timer, &li, 0, nullptr, nullptr, false);
             WaitForSingleObject(dxgi.timer, INFINITE);
+        }
 
-            do {
-                YieldProcessor();
-                QueryPerformanceCounter(&t);
-                t.QuadPart = qpc_to_100ns(t.QuadPart);
-            } while (t.QuadPart < next);
+        QueryPerformanceCounter(&t);
+        t.QuadPart = qpc_to_100ns(t.QuadPart);
+        while (t.QuadPart < next) {
+            YieldProcessor();
+            QueryPerformanceCounter(&t);
+            t.QuadPart = qpc_to_100ns(t.QuadPart);
         }
     }
     QueryPerformanceCounter(&t);
@@ -857,6 +929,10 @@ void gfx_dxgi_create_swap_chain(IUnknown* device, std::function<void()>&& before
     dxgi.before_destroy_swap_chain_fn = std::move(before_destroy_fn);
 }
 
+bool gfx_dxgi_is_running(void) {
+    return dxgi.is_running;
+}
+
 HWND gfx_dxgi_get_h_wnd(void) {
     return dxgi.h_wnd;
 }
@@ -891,6 +967,14 @@ bool gfx_dxgi_can_disable_vsync() {
     return dxgi.tearing_support;
 }
 
+void gfx_dxgi_destroy(void) {
+    // TODO: destroy _any_ resources used by dxgi, including the window handle
+}
+
+bool gfx_dxgi_is_fullscreen(void) {
+    return dxgi.is_full_screen;
+}
+
 extern "C" struct GfxWindowManagerAPI gfx_dxgi_api = { gfx_dxgi_init,
                                                        gfx_dxgi_close,
                                                        gfx_dxgi_set_keyboard_callbacks,
@@ -898,7 +982,12 @@ extern "C" struct GfxWindowManagerAPI gfx_dxgi_api = { gfx_dxgi_init,
                                                        gfx_dxgi_set_fullscreen,
                                                        gfx_dxgi_get_active_window_refresh_rate,
                                                        gfx_dxgi_set_cursor_visibility,
-                                                       gfx_dxgi_main_loop,
+                                                       gfx_dxgi_get_mouse_pos,
+                                                       gfx_dxgi_get_mouse_delta,
+                                                       gfx_dxgi_get_mouse_wheel,
+                                                       gfx_dxgi_get_mouse_state,
+                                                       gfx_dxgi_set_mouse_capture,
+                                                       gfx_dxgi_is_mouse_captured,
                                                        gfx_dxgi_get_dimensions,
                                                        gfx_dxgi_handle_events,
                                                        gfx_dxgi_start_frame,
@@ -908,6 +997,9 @@ extern "C" struct GfxWindowManagerAPI gfx_dxgi_api = { gfx_dxgi_init,
                                                        gfx_dxgi_set_target_fps,
                                                        gfx_dxgi_set_maximum_frame_latency,
                                                        gfx_dxgi_get_key_name,
-                                                       gfx_dxgi_can_disable_vsync };
+                                                       gfx_dxgi_can_disable_vsync,
+                                                       gfx_dxgi_is_running,
+                                                       gfx_dxgi_destroy,
+                                                       gfx_dxgi_is_fullscreen };
 
 #endif

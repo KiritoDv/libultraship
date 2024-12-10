@@ -1,6 +1,6 @@
 #include "ShipDeviceIndexMappingManager.h"
 #include <SDL2/SDL.h>
-#include <Utils/StringHelper.h>
+#include "utils/StringHelper.h"
 #include "public/bridge/consolevariablebridge.h"
 #include <vector>
 #include "Context.h"
@@ -125,7 +125,7 @@ void ShipDeviceIndexMappingManager::InitializeSDLMappingsForPort(uint8_t n64port
 
 std::shared_ptr<ShipDeviceIndexToPhysicalDeviceIndexMapping>
 ShipDeviceIndexMappingManager::CreateDeviceIndexMappingFromConfig(std::string id) {
-    const std::string mappingCvarKey = "gControllers.DeviceMappings." + id;
+    const std::string mappingCvarKey = CVAR_PREFIX_CONTROLLERS ".DeviceMappings." + id;
     const std::string mappingClass =
         CVarGetString(StringHelper::Sprintf("%s.DeviceMappingClass", mappingCvarKey.c_str()).c_str(), "");
 
@@ -192,10 +192,10 @@ void ShipDeviceIndexMappingManager::UpdateControllerNamesFromConfig() {
     // for each controller (especially compared to include/exclude locations in rando), and
     // the audio editor pattern doesn't work for this because that looks for ids that are either
     // hardcoded or provided by an otr file
-    std::stringstream mappingIdsStringStream(CVarGetString("gControllers.DeviceMappingIds", ""));
+    std::stringstream mappingIdsStringStream(CVarGetString(CVAR_PREFIX_CONTROLLERS ".DeviceMappingIds", ""));
     std::string mappingIdString;
     while (getline(mappingIdsStringStream, mappingIdString, ',')) {
-        const std::string mappingCvarKey = "gControllers.DeviceMappings." + mappingIdString;
+        const std::string mappingCvarKey = CVAR_PREFIX_CONTROLLERS ".DeviceMappings." + mappingIdString;
         const std::string mappingClass =
             CVarGetString(StringHelper::Sprintf("%s.DeviceMappingClass", mappingCvarKey.c_str()).c_str(), "");
 
@@ -300,6 +300,30 @@ void ShipDeviceIndexMappingManager::HandlePhysicalDeviceConnect(int32_t sdlDevic
     }
 
     if (Context::GetInstance()->GetControlDeck()->IsSinglePlayerMappingMode()) {
+        std::set<ShipDeviceIndex> alreadyConnectedDevices;
+        for (auto mapping : Context::GetInstance()->GetControlDeck()->GetControllerByPort(0)->GetAllMappings()) {
+            auto sdlMapping = std::dynamic_pointer_cast<SDLMapping>(mapping);
+            if (sdlMapping == nullptr) {
+                continue;
+            }
+
+            if (sdlMapping->ControllerLoaded()) {
+                alreadyConnectedDevices.insert(sdlMapping->GetShipDeviceIndex());
+            }
+        }
+
+        for (auto [lusIndex, mapping] : mShipDeviceIndexToPhysicalDeviceIndexMappings) {
+            auto sdlMapping = dynamic_pointer_cast<ShipDeviceIndexToSDLDeviceIndexMapping>(mapping);
+            if (sdlMapping == nullptr) {
+                continue;
+            }
+
+            if (alreadyConnectedDevices.contains(lusIndex)) {
+                sdlMapping->SetSDLDeviceIndex(GetNewSDLDeviceIndexFromShipDeviceIndex(lusIndex));
+                sdlMapping->SaveToConfig();
+            }
+        }
+
         InitializeSDLMappingsForPort(0, sdlDeviceIndex);
         return;
     } else {
@@ -385,6 +409,8 @@ void ShipDeviceIndexMappingManager::HandlePhysicalDeviceDisconnectSinglePlayer(i
 }
 
 void ShipDeviceIndexMappingManager::HandlePhysicalDeviceDisconnectMultiplayer(int32_t sdlJoystickInstanceId) {
+    auto portIndexOfPhysicalDeviceThatHasBeenDisconnected =
+        GetPortIndexOfDisconnectedPhysicalDevice(sdlJoystickInstanceId);
     auto lusIndexOfPhysicalDeviceThatHasBeenDisconnected =
         GetShipDeviceIndexOfDisconnectedPhysicalDevice(sdlJoystickInstanceId);
 
@@ -415,7 +441,7 @@ void ShipDeviceIndexMappingManager::HandlePhysicalDeviceDisconnectMultiplayer(in
                 Context::GetInstance()->GetWindow()->GetGui()->GetGuiWindow("Controller Disconnected"));
             if (controllerDisconnectedWindow != nullptr) {
                 controllerDisconnectedWindow->SetPortIndexOfDisconnectedController(
-                    GetPortIndexOfDisconnectedPhysicalDevice(sdlJoystickInstanceId));
+                    portIndexOfPhysicalDeviceThatHasBeenDisconnected);
                 controllerDisconnectedWindow->Show();
             }
             continue;
@@ -506,6 +532,8 @@ uint8_t ShipDeviceIndexMappingManager::GetPortIndexOfDisconnectedPhysicalDevice(
 
 ShipDeviceIndex
 ShipDeviceIndexMappingManager::GetShipDeviceIndexOfDisconnectedPhysicalDevice(int32_t sdlJoystickInstanceId) {
+    auto shipDeviceIndex = ShipDeviceIndex::Max;
+
     for (uint8_t portIndex = 0; portIndex < 4; portIndex++) {
         auto controller = Context::GetInstance()->GetControlDeck()->GetControllerByPort(portIndex);
 
@@ -516,7 +544,8 @@ ShipDeviceIndexMappingManager::GetShipDeviceIndexOfDisconnectedPhysicalDevice(in
                     continue;
                 }
                 if (sdlButtonMapping->GetJoystickInstanceId() == sdlJoystickInstanceId) {
-                    return sdlButtonMapping->GetShipDeviceIndex();
+                    shipDeviceIndex = sdlButtonMapping->GetShipDeviceIndex();
+                    sdlButtonMapping->CloseController();
                 }
             }
         }
@@ -529,7 +558,8 @@ ShipDeviceIndexMappingManager::GetShipDeviceIndexOfDisconnectedPhysicalDevice(in
                         continue;
                     }
                     if (sdlAxisDirectionMapping->GetJoystickInstanceId() == sdlJoystickInstanceId) {
-                        return sdlAxisDirectionMapping->GetShipDeviceIndex();
+                        shipDeviceIndex = sdlAxisDirectionMapping->GetShipDeviceIndex();
+                        sdlAxisDirectionMapping->CloseController();
                     }
                 }
             }
@@ -537,7 +567,8 @@ ShipDeviceIndexMappingManager::GetShipDeviceIndexOfDisconnectedPhysicalDevice(in
 
         auto sdlGyroMapping = std::dynamic_pointer_cast<SDLMapping>(controller->GetGyro()->GetGyroMapping());
         if (sdlGyroMapping != nullptr && sdlGyroMapping->GetJoystickInstanceId() == sdlJoystickInstanceId) {
-            return sdlGyroMapping->GetShipDeviceIndex();
+            shipDeviceIndex = sdlGyroMapping->GetShipDeviceIndex();
+            sdlGyroMapping->CloseController();
         }
 
         for (auto [id, rumbleMapping] : controller->GetRumble()->GetAllRumbleMappings()) {
@@ -546,7 +577,8 @@ ShipDeviceIndexMappingManager::GetShipDeviceIndexOfDisconnectedPhysicalDevice(in
                 continue;
             }
             if (sdlRumbleMapping->GetJoystickInstanceId() == sdlJoystickInstanceId) {
-                return sdlRumbleMapping->GetShipDeviceIndex();
+                shipDeviceIndex = sdlRumbleMapping->GetShipDeviceIndex();
+                sdlRumbleMapping->CloseController();
             }
         }
 
@@ -556,13 +588,13 @@ ShipDeviceIndexMappingManager::GetShipDeviceIndexOfDisconnectedPhysicalDevice(in
                 continue;
             }
             if (sdlLEDMapping->GetJoystickInstanceId() == sdlJoystickInstanceId) {
-                return sdlLEDMapping->GetShipDeviceIndex();
+                shipDeviceIndex = sdlLEDMapping->GetShipDeviceIndex();
+                sdlLEDMapping->CloseController();
             }
         }
     }
 
-    // couldn't find one
-    return ShipDeviceIndex::Max;
+    return shipDeviceIndex;
 }
 
 ShipDeviceIndex ShipDeviceIndexMappingManager::GetLowestShipDeviceIndexWithNoAssociatedButtonOrAxisDirectionMappings() {
@@ -588,7 +620,7 @@ void ShipDeviceIndexMappingManager::SaveMappingIdsToConfig() {
     // todo: this efficently (when we build out cvar array support?)
 
     std::set<std::string> ids;
-    std::stringstream mappingIdsStringStream(CVarGetString("gControllers.DeviceMappingIds", ""));
+    std::stringstream mappingIdsStringStream(CVarGetString(CVAR_PREFIX_CONTROLLERS ".DeviceMappingIds", ""));
     std::string mappingIdString;
     while (getline(mappingIdsStringStream, mappingIdString, ',')) {
         ids.insert(mappingIdString);
@@ -605,9 +637,9 @@ void ShipDeviceIndexMappingManager::SaveMappingIdsToConfig() {
     }
 
     if (mappingIdListString == "") {
-        CVarClear("gControllers.DeviceMappingIds");
+        CVarClear(CVAR_PREFIX_CONTROLLERS ".DeviceMappingIds");
     } else {
-        CVarSetString("gControllers.DeviceMappingIds", mappingIdListString.c_str());
+        CVarSetString(CVAR_PREFIX_CONTROLLERS ".DeviceMappingIds", mappingIdListString.c_str());
     }
 
     CVarSave();
@@ -622,11 +654,13 @@ ShipDeviceIndexMappingManager::GetAllDeviceIndexMappingsFromConfig() {
     // for each controller (especially compared to include/exclude locations in rando), and
     // the audio editor pattern doesn't work for this because that looks for ids that are either
     // hardcoded or provided by an otr file
-    std::stringstream mappingIdsStringStream(CVarGetString("gControllers.DeviceMappingIds", ""));
+    std::stringstream mappingIdsStringStream(CVarGetString(CVAR_PREFIX_CONTROLLERS ".DeviceMappingIds", ""));
     std::string mappingIdString;
     while (getline(mappingIdsStringStream, mappingIdString, ',')) {
         auto mapping = CreateDeviceIndexMappingFromConfig(mappingIdString);
-        mappings[mapping->GetShipDeviceIndex()] = mapping;
+        if (mapping != nullptr) {
+            mappings[mapping->GetShipDeviceIndex()] = mapping;
+        }
     }
 
     return mappings;

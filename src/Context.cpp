@@ -5,7 +5,8 @@
 #include <spdlog/sinks/rotating_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include "install_config.h"
-#include "debug/GfxDebugger.h"
+#include "graphic/Fast3D/debug/GfxDebugger.h"
+#include "graphic/Fast3D/Fast3dWindow.h"
 
 #ifdef _WIN32
 #include <tchar.h>
@@ -15,6 +16,9 @@
 #include "utils/AppleFolderManager.h"
 #elif defined(__SWITCH__)
 #include "port/switch/SwitchImpl.h"
+#else
+#include <unistd.h>
+#include <pwd.h>
 #endif
 
 namespace Ship {
@@ -26,9 +30,10 @@ std::shared_ptr<Context> Context::GetInstance() {
 
 Context::~Context() {
     SPDLOG_TRACE("destruct context");
+    GetWindow()->SaveWindowToConfig();
+
     // Explicitly destructing everything so that logging is done last.
     mAudio = nullptr;
-    GetWindow()->SaveWindowSizeToConfig(GetConfig());
     mWindow = nullptr;
     mConsole = nullptr;
     mCrashHandler = nullptr;
@@ -44,11 +49,11 @@ std::shared_ptr<Context> Context::CreateInstance(const std::string name, const s
                                                  const std::string configFilePath,
                                                  const std::vector<std::string>& otrFiles,
                                                  const std::unordered_set<uint32_t>& validHashes,
-                                                 uint32_t reservedThreadCount) {
+                                                 uint32_t reservedThreadCount, AudioSettings audioSettings) {
     if (mContext.expired()) {
         auto shared = std::make_shared<Context>(name, shortName, configFilePath);
         mContext = shared;
-        shared->Init(otrFiles, validHashes, reservedThreadCount);
+        shared->Init(otrFiles, validHashes, reservedThreadCount, audioSettings);
         return shared;
     }
 
@@ -71,11 +76,11 @@ std::shared_ptr<Context> Context::CreateUninitializedInstance(const std::string 
 }
 
 Context::Context(std::string name, std::string shortName, std::string configFilePath)
-    : mName(std::move(name)), mShortName(std::move(shortName)), mConfigFilePath(std::move(configFilePath)) {
+    : mConfigFilePath(std::move(configFilePath)), mName(std::move(name)), mShortName(std::move(shortName)) {
 }
 
 void Context::Init(const std::vector<std::string>& otrFiles, const std::unordered_set<uint32_t>& validHashes,
-                   uint32_t reservedThreadCount) {
+                   uint32_t reservedThreadCount, AudioSettings audioSettings) {
     InitLogging();
     InitConfiguration();
     InitConsoleVariables();
@@ -84,7 +89,7 @@ void Context::Init(const std::vector<std::string>& otrFiles, const std::unordere
     InitCrashHandler();
     InitConsole();
     InitWindow();
-    InitAudio();
+    InitAudio(audioSettings);
     InitGfxDebugger();
 }
 
@@ -234,12 +239,12 @@ void Context::InitCrashHandler() {
     mCrashHandler = std::make_shared<CrashHandler>();
 }
 
-void Context::InitAudio() {
+void Context::InitAudio(AudioSettings settings) {
     if (GetAudio() != nullptr) {
         return;
     }
 
-    mAudio = std::make_shared<Audio>();
+    mAudio = std::make_shared<Audio>(settings);
     GetAudio()->Init();
 }
 
@@ -248,7 +253,7 @@ void Context::InitGfxDebugger() {
         return;
     }
 
-    mGfxDebugger = std::make_shared<LUS::GfxDebugger>();
+    mGfxDebugger = std::make_shared<Fast::GfxDebugger>();
 }
 
 void Context::InitConsole() {
@@ -260,12 +265,12 @@ void Context::InitConsole() {
     GetConsole()->Init();
 }
 
-void Context::InitWindow(std::shared_ptr<GuiWindow> customInputEditorWindow) {
+void Context::InitWindow(std::vector<std::shared_ptr<GuiWindow>> guiWindows) {
     if (GetWindow() != nullptr) {
         return;
     }
 
-    mWindow = std::make_shared<Window>(customInputEditorWindow);
+    mWindow = std::make_shared<Fast::Fast3dWindow>(guiWindows);
     GetWindow()->Init();
 }
 
@@ -305,7 +310,7 @@ std::shared_ptr<Audio> Context::GetAudio() {
     return mAudio;
 }
 
-std::shared_ptr<LUS::GfxDebugger> Context::GetGfxDebugger() {
+std::shared_ptr<Fast::GfxDebugger> Context::GetGfxDebugger() {
     return mGfxDebugger;
 }
 
@@ -349,7 +354,7 @@ std::string Context::GetAppBundlePath() {
         progpath.resize(len);
 
         // Find the last '/' and remove everything after it
-        int lastSlash = progpath.find_last_of("/");
+        long unsigned int lastSlash = progpath.find_last_of("/");
         if (lastSlash != std::string::npos) {
             progpath.erase(lastSlash);
         }
@@ -375,7 +380,17 @@ std::string Context::GetAppDirectoryPath(std::string appName) {
     return std::string(home) + "/Documents";
 #endif
 
-#if defined(__linux__) || defined(__APPLE__)
+#if defined(__APPLE__)
+    if (char* fpath = std::getenv("SHIP_HOME")) {
+        if (fpath[0] == '~') {
+            const char* home = getenv("HOME") ? getenv("HOME") : getpwuid(getuid())->pw_dir;
+            return std::string(home) + std::string(fpath).substr(1);
+        }
+        return std::string(fpath);
+    }
+#endif
+
+#if defined(__linux__)
     char* fpath = std::getenv("SHIP_HOME");
     if (fpath != NULL) {
         return std::string(fpath);

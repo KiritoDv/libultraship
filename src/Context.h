@@ -4,6 +4,7 @@
 #include <memory>
 #include <unordered_set>
 #include <vector>
+#include <unordered_map>
 #include <spdlog/spdlog.h>
 #include "config/Config.h"
 #include "resource/ResourceManager.h"
@@ -13,10 +14,7 @@
 #include "window/Window.h"
 #include "config/ConsoleVariable.h"
 #include "debug/Console.h"
-
-namespace LUS {
-class GfxDebugger;
-}
+#include "graphic/Fast3D/debug/GfxDebugger.h"
 
 namespace Ship {
 
@@ -27,7 +25,7 @@ class Context {
                                                    const std::string configFilePath,
                                                    const std::vector<std::string>& otrFiles = {},
                                                    const std::unordered_set<uint32_t>& validHashes = {},
-                                                   uint32_t reservedThreadCount = 1);
+                                                   uint32_t reservedThreadCount = 1, AudioSettings audioSettings = {});
     static std::shared_ptr<Context> CreateUninitializedInstance(const std::string name, const std::string shortName,
                                                                 const std::string configFilePath);
     static std::string GetAppBundlePath();
@@ -40,7 +38,7 @@ class Context {
     ~Context();
 
     void Init(const std::vector<std::string>& otrFiles, const std::unordered_set<uint32_t>& validHashes,
-              uint32_t reservedThreadCount);
+              uint32_t reservedThreadCount, AudioSettings audioSettings);
 
     std::shared_ptr<spdlog::logger> GetLogger();
     std::shared_ptr<Config> GetConfig();
@@ -51,7 +49,7 @@ class Context {
     std::shared_ptr<Window> GetWindow();
     std::shared_ptr<Console> GetConsole();
     std::shared_ptr<Audio> GetAudio();
-    std::shared_ptr<LUS::GfxDebugger> GetGfxDebugger();
+    std::shared_ptr<Fast::GfxDebugger> GetGfxDebugger();
 
     std::string GetConfigFilePath();
     std::string GetName();
@@ -64,10 +62,10 @@ class Context {
                              const std::unordered_set<uint32_t>& validHashes = {}, uint32_t reservedThreadCount = 1);
     void InitControlDeck(std::vector<CONTROLLERBUTTONS_T> additionalBitmasks = {});
     void InitCrashHandler();
-    void InitAudio();
+    void InitAudio(AudioSettings settings);
     void InitGfxDebugger();
     void InitConsole();
-    void InitWindow(std::shared_ptr<GuiWindow> customInputEditorWindow = nullptr);
+    void InitWindow(std::vector<std::shared_ptr<GuiWindow>> guiWindows = {});
 
   protected:
     Context() = default;
@@ -84,7 +82,7 @@ class Context {
     std::shared_ptr<Window> mWindow;
     std::shared_ptr<Console> mConsole;
     std::shared_ptr<Audio> mAudio;
-    std::shared_ptr<LUS::GfxDebugger> mGfxDebugger;
+    std::shared_ptr<Fast::GfxDebugger> mGfxDebugger;
 
     std::string mConfigFilePath;
     std::string mMainPath;

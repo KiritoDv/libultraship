@@ -10,14 +10,15 @@ enum class AudioBackend { WASAPI, SDL };
 
 class Audio {
   public:
-    Audio();
+    Audio(AudioSettings settings) : mAudioSettings(settings) {
+    }
     ~Audio();
 
     void Init();
     std::shared_ptr<AudioPlayer> GetAudioPlayer();
-    AudioBackend GetAudioBackend();
+    AudioBackend GetCurrentAudioBackend();
     std::shared_ptr<std::vector<AudioBackend>> GetAvailableAudioBackends();
-    void SetAudioBackend(AudioBackend backend);
+    void SetCurrentAudioBackend(AudioBackend backend);
 
   protected:
     void InitAudioPlayer();
@@ -25,6 +26,7 @@ class Audio {
   private:
     std::shared_ptr<AudioPlayer> mAudioPlayer;
     AudioBackend mAudioBackend;
+    AudioSettings mAudioSettings;
     std::shared_ptr<std::vector<AudioBackend>> mAvailableAudioBackends;
 };
 } // namespace Ship

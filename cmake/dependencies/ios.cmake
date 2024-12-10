@@ -1,7 +1,8 @@
+include(FetchContent)
+
 #=================== SDL2 ===================
 find_package(SDL2 QUIET)
 if (NOT ${SDL2_FOUND})
-    include(FetchContent)
     FetchContent_Declare(
         SDL2
         GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
@@ -23,6 +24,31 @@ if (NOT ${nlohmann_json_FOUND})
     FetchContent_MakeAvailable(nlohmann_json)
 endif()
 
+#=================== tinyxml2 ===================
+find_package(tinyxml2 QUIET)
+if (NOT ${tinyxml2_FOUND})
+    set(tinyxml2_BUILD_TESTING OFF)
+    FetchContent_Declare(
+        tinyxml2
+        GIT_REPOSITORY https://github.com/leethomason/tinyxml2.git
+        GIT_TAG 10.0.0
+        OVERRIDE_FIND_PACKAGE
+    )
+    FetchContent_MakeAvailable(tinyxml2)
+endif()
+
+#=================== spdlog ===================
+find_package(spdlog QUIET)
+if (NOT ${spdlog_FOUND})
+    FetchContent_Declare(
+        spdlog
+        GIT_REPOSITORY https://github.com/gabime/spdlog.git
+        GIT_TAG v1.14.1
+        OVERRIDE_FIND_PACKAGE
+    )
+    FetchContent_MakeAvailable(spdlog)
+endif()
+
 #=================== libzip ===================
 find_package(libzip QUIET)
 if (NOT ${libzip_FOUND})
@@ -42,3 +68,23 @@ if (NOT ${libzip_FOUND})
     FetchContent_MakeAvailable(libzip)
     list(APPEND ADDITIONAL_LIB_INCLUDES ${libzip_SOURCE_DIR}/lib ${libzip_BINARY_DIR})
 endif()
+
+#=================== Metal-cpp ===================
+FetchContent_Declare(
+    metalcpp
+    GIT_REPOSITORY https://github.com/briaguya-ai/single-header-metal-cpp.git
+    GIT_TAG macOS13_iOS16
+)
+FetchContent_MakeAvailable(metalcpp)
+list(APPEND ADDITIONAL_LIB_INCLUDES ${metalcpp_SOURCE_DIR})
+
+#=================== ImGui ===================
+target_sources(ImGui
+    PRIVATE
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_metal.mm
+)
+
+target_include_directories(ImGui PRIVATE ${metalcpp_SOURCE_DIR})
+target_compile_definitions(ImGui PUBLIC IMGUI_IMPL_METAL_CPP)
+
+target_link_libraries(ImGui PUBLIC SDL2::SDL2-static SDL2::SDL2main)

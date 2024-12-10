@@ -2,7 +2,7 @@
 #include "Context.h"
 #include <string>
 #include <algorithm>
-#include <StrHash64.h>
+#include "utils/StrHash64.h"
 
 std::shared_ptr<Ship::IResource> ResourceLoad(const char* name) {
     return Ship::Context::GetInstance()->GetResourceManager()->LoadResource(name);
@@ -73,7 +73,7 @@ void* ResourceGetDataByCrc(uint64_t crc) {
     auto name = ResourceGetNameByCrc(crc);
 
     if (name == nullptr || strlen(name) == 0) {
-        SPDLOG_TRACE("ResourceGetDataByCrc: Unknown crc {}\n", crc);
+        SPDLOG_TRACE("ResourceGetDataByCrc: Unknown crc 0x{:X}\n", crc);
         return nullptr;
     }
 

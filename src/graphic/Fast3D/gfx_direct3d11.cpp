@@ -15,8 +15,6 @@
 #include <d3d11.h>
 #include <d3dcompiler.h>
 
-#include "libultraship/libultraship.h"
-
 #ifndef _LANGUAGE_C
 #define _LANGUAGE_C
 #endif
@@ -29,6 +27,8 @@
 
 #include "gfx_screen_config.h"
 #include "window/gui/Gui.h"
+#include "Context.h"
+#include "config/ConsoleVariable.h"
 
 #include "gfx_cc.h"
 #include "gfx_rendering_api.h"
@@ -154,6 +154,7 @@ static struct {
     int8_t last_depth_test = -1;
     int8_t last_depth_mask = -1;
     int8_t last_zmode_decal = -1;
+    bool srgb_mode = false;
     D3D_PRIMITIVE_TOPOLOGY last_primitive_topology = D3D_PRIMITIVE_TOPOLOGY_UNDEFINED;
 } d3d;
 
@@ -417,7 +418,7 @@ static struct ShaderProgram* gfx_d3d11_create_and_load_new_shader(uint64_t shade
     size_t len, num_floats;
 
     gfx_direct3d_common_build_shader(buf, len, num_floats, cc_features, false,
-                                     d3d.current_filter_mode == FILTER_THREE_POINT);
+                                     d3d.current_filter_mode == FILTER_THREE_POINT, d3d.srgb_mode);
 
     ComPtr<ID3DBlob> vs, ps;
     ComPtr<ID3DBlob> error_blob;
@@ -688,7 +689,9 @@ static void gfx_d3d11_draw_triangles(float buf_vbo[], size_t buf_vbo_len, size_t
 
         depth_stencil_desc.DepthEnable = d3d.depth_test || d3d.depth_mask;
         depth_stencil_desc.DepthWriteMask = d3d.depth_mask ? D3D11_DEPTH_WRITE_MASK_ALL : D3D11_DEPTH_WRITE_MASK_ZERO;
-        depth_stencil_desc.DepthFunc = d3d.depth_test ? D3D11_COMPARISON_LESS_EQUAL : D3D11_COMPARISON_ALWAYS;
+        depth_stencil_desc.DepthFunc = d3d.depth_test
+                                           ? (d3d.zmode_decal ? D3D11_COMPARISON_LESS_EQUAL : D3D11_COMPARISON_LESS)
+                                           : D3D11_COMPARISON_ALWAYS;
         depth_stencil_desc.StencilEnable = false;
 
         ThrowIfFailed(d3d.device->CreateDepthStencilState(&depth_stencil_desc, d3d.depth_stencil_state.GetAddressOf()));
@@ -712,7 +715,8 @@ static void gfx_d3d11_draw_triangles(float buf_vbo[], size_t buf_vbo_len, size_t
         const int n64modeFactor = 120;
         const int noVanishFactor = 100;
         float SSDB = -2;
-        switch (CVarGetInteger("gZFightingMode", 0)) {
+
+        switch (Ship::Context::GetInstance()->GetConsoleVariables()->GetInteger(CVAR_Z_FIGHTING_MODE, 0)) {
             case 1: // scaled z-fighting (N64 mode like)
                 SSDB = -1.0f * (float)d3d.render_target_height / n64modeFactor;
                 break;
@@ -854,8 +858,8 @@ static void gfx_d3d11_update_framebuffer_parameters(int fb_id, uint32_t width, u
     Framebuffer& fb = d3d.framebuffers[fb_id];
     TextureData& tex = d3d.textures[fb.texture_id];
 
-    width = max(width, 1U);
-    height = max(height, 1U);
+    width = ((width) > (1U) ? (width) : (1U));
+    height = ((height) > (1U) ? (height) : (1U));
     // We can't use MSAA the way we are using it on Feature Level 10.0 Hardware, so disable it altogether.
     msaa_level = d3d.feature_level < D3D_FEATURE_LEVEL_10_1 ? 1 : msaa_level;
     while (msaa_level > 1 && d3d.msaa_num_quality_levels[msaa_level - 1] == 0) {
@@ -942,11 +946,13 @@ void gfx_d3d11_start_draw_to_framebuffer(int fb_id, float noise_scale) {
     d3d.context->Unmap(d3d.per_frame_cb.Get(), 0);
 }
 
-void gfx_d3d11_clear_framebuffer(void) {
+void gfx_d3d11_clear_framebuffer(bool color, bool depth) {
     Framebuffer& fb = d3d.framebuffers[d3d.current_framebuffer];
-    const float clearColor[] = { 0.0f, 0.0f, 0.0f, 1.0f };
-    d3d.context->ClearRenderTargetView(fb.render_target_view.Get(), clearColor);
-    if (fb.has_depth_buffer) {
+    if (color) {
+        const float clearColor[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+        d3d.context->ClearRenderTargetView(fb.render_target_view.Get(), clearColor);
+    }
+    if (depth && fb.has_depth_buffer) {
         d3d.context->ClearDepthStencilView(fb.depth_stencil_view.Get(), D3D11_CLEAR_DEPTH, 1.0f, 0);
     }
 }
@@ -981,13 +987,20 @@ void gfx_d3d11_copy_framebuffer(int fb_dst_id, int fb_src_id, int srcX0, int src
     TextureData& td_src = d3d.textures[fb_src.texture_id];
 
     // Textures are the same size so we can do a direct copy or resolve
-    if (td_src.height == td_dst.height) {
+    if (td_src.height == td_dst.height && td_src.width == td_dst.width) {
         if (fb_src.msaa_level <= 1) {
             d3d.context->CopyResource(td_dst.texture.Get(), td_src.texture.Get());
         } else {
             d3d.context->ResolveSubresource(td_dst.texture.Get(), 0, td_src.texture.Get(), 0,
                                             DXGI_FORMAT_R8G8B8A8_UNORM);
         }
+        return;
+    }
+
+    if (srcY1 > (int)td_src.height || srcX1 > (int)td_src.width || srcX0 < 0 || srcY0 < 0 ||
+        dstY1 > (int)td_dst.height || dstX1 > (int)td_dst.width || dstX0 < 0 || dstY0 < 0) {
+        // Using a source region larger than the source resource or copy outside of the destination resource is
+        // considered undefined behavior and could lead to removal of the rendering device
         return;
     }
 
@@ -1220,6 +1233,10 @@ ImTextureID gfx_d3d11_get_texture_by_id(int id) {
     return d3d.textures[id].resource_view.Get();
 }
 
+void gfx_d3d11_enable_srgb_mode(void) {
+    d3d.srgb_mode = true;
+}
+
 struct GfxRenderingAPI gfx_direct3d11_api = { gfx_d3d11_get_name,
                                               gfx_d3d11_get_max_texture_size,
                                               gfx_d3d11_get_clip_parameters,
@@ -1255,6 +1272,7 @@ struct GfxRenderingAPI gfx_direct3d11_api = { gfx_d3d11_get_name,
                                               gfx_d3d11_select_texture_fb,
                                               gfx_d3d11_delete_texture,
                                               gfx_d3d11_set_texture_filter,
-                                              gfx_d3d11_get_texture_filter };
+                                              gfx_d3d11_get_texture_filter,
+                                              gfx_d3d11_enable_srgb_mode };
 
 #endif
