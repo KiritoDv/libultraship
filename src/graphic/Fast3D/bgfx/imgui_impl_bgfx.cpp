@@ -38,13 +38,15 @@ void ImGui_Implbgfx_RenderDrawLists(ImDrawData* draw_data)
     // Avoid rendering when minimized, scale coordinates for retina displays
     // (screen coordinates != framebuffer coordinates)
     ImGuiIO& io = ImGui::GetIO();
-    int fb_width = (int)(io.DisplaySize.x * io.DisplayFramebufferScale.x);
-    int fb_height = (int)(io.DisplaySize.y * io.DisplayFramebufferScale.y);
+    int fb_width = (int)(draw_data->DisplaySize.x * draw_data->FramebufferScale.x);
+    int fb_height = (int)(draw_data->DisplaySize.y * draw_data->FramebufferScale.y);
     if (fb_width == 0 || fb_height == 0) {
         return;
     }
 
-    draw_data->ScaleClipRects(io.DisplayFramebufferScale);
+    bgfx::setViewClear(g_View, BGFX_CLEAR_COLOR);
+
+    draw_data->ScaleClipRects(draw_data->FramebufferScale);
 
     // Setup render state: alpha-blending enabled, no face culling,
     // no depth testing, scissor enabled
@@ -58,10 +60,13 @@ void ImGui_Implbgfx_RenderDrawLists(ImDrawData* draw_data)
     // Setup viewport, orthographic projection matrix
     float ortho[16];
     bx::mtxOrtho(
-        ortho, 0.0f, io.DisplaySize.x, io.DisplaySize.y, 0.0f, 0.0f, 1000.0f,
+        ortho, 0.0f, draw_data->DisplaySize.x, draw_data->DisplaySize.y, 0.0f, 0.0f, 1000.0f,
         0.0f, caps->homogeneousDepth);
     bgfx::setViewTransform(g_View, NULL, ortho);
     bgfx::setViewRect(g_View, 0, 0, (uint16_t)fb_width, (uint16_t)fb_height);
+
+    const ImVec2 clipPos   = draw_data->DisplayPos;       // (0,0) unless using multi-viewports
+	const ImVec2 clipScale = draw_data->FramebufferScale; // (1,1) unless using retina display which are often (2,2)
 
     // Render command lists
     for (int n = 0; n < draw_data->CmdListsCount; n++) {
@@ -109,7 +114,7 @@ void ImGui_Implbgfx_RenderDrawLists(ImDrawData* draw_data)
                 bgfx::TextureHandle texture = {
                     (uint16_t)((intptr_t)pcmd->TextureId & 0xffff)};
                 bgfx::setTexture(0, g_AttribLocationTex, texture);
-                bgfx::setVertexBuffer(0, &tvb, 0, numVertices);
+                bgfx::setVertexBuffer(0, &tvb, pcmd->VtxOffset, numVertices);
                 bgfx::setIndexBuffer(&tib, pcmd->IdxOffset, pcmd->ElemCount);
                 bgfx::submit(g_View, g_ShaderHandle);
             }

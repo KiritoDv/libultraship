@@ -11,7 +11,7 @@
 
 #include "gfx_cc.h"
 #include "gfx_rendering_api.h"
-#include "imgui_impl_bgfx.h"
+#include "bgfx/imgui_impl_bgfx.h"
 #include "window/gui/Gui.h"
 #include "window/Window.h"
 #include "gfx_pc.h"
@@ -20,15 +20,12 @@
 #include <bgfx/bgfx.h>
 #include <SDL_syswm.h>
 #include "Context.h"
+#include <brtshaderc.h>
 #include "imgui_impl_sdl2.h"
-#include "bgfx/platform.h"
-#include "_deps/bgfx-src/bimg/include/bimg/bimg.h"
-#include "_deps/bgfx-src/bgfx/examples/common/entry/entry.h"
+#include "bx/platform.h"
 
 #include <vector>
 #include <algorithm>
-
-#define BX_PLATFORM_OSX 1
 
 struct TextureDataBGFX {
     uint16_t width;
@@ -36,6 +33,8 @@ struct TextureDataBGFX {
     bool linear_filtering;
     bgfx::TextureHandle ptr = BGFX_INVALID_HANDLE;
 };
+
+bgfx::ViewId kClearView = 0;
 
 struct BGFXContext {
     const bgfx::ViewId kClearView = 0;
@@ -45,6 +44,8 @@ struct BGFXContext {
     uint32_t current_texture_ids[SHADER_MAX_TEXTURES];
 
 } context;
+
+const bgfx::Caps* caps = bgfx::getCaps();
 
 static void gfx_bgfx_init(void) {
     auto wnd = std::dynamic_pointer_cast<Fast::Fast3dWindow>(Ship::Context::GetInstance()->GetWindow());
@@ -65,8 +66,16 @@ static void gfx_bgfx_init(void) {
 #elif BX_PLATFORM_OSX
     pd.nwh = wmi.info.cocoa.window;
 #elif BX_PLATFORM_LINUX
-    pd.ndt = wmi.info.x11.display;
-    pd.nwh = (void*)(uintptr_t)wmi.info.x11.window;
+    if (wmi.subsystem == SDL_SYSWM_WAYLAND) {
+        pd.nwh = (void*)(uintptr_t)wmi.info.wl.surface;
+        pd.ndt = wmi.info.wl.display;
+        pd.type = bgfx::NativeWindowHandleType::Wayland;
+    }
+    else {
+        pd.nwh = (void*)(uintptr_t)wmi.info.x11.window;
+        pd.ndt = wmi.info.x11.display;
+        pd.type = bgfx::NativeWindowHandleType::Default;
+    }
 #elif BX_PLATFORM_EMSCRIPTEN
     pd.nwh = (void*)"#canvas";
 #endif
@@ -75,7 +84,7 @@ static void gfx_bgfx_init(void) {
     pd.backBufferDS = NULL;
 
     bgfx::Init bgfx_init;
-    bgfx_init.type = bgfx::RendererType::Vulkan; // auto choose renderer
+    bgfx_init.type = bgfx::RendererType::OpenGL; // auto choose renderer
     bgfx_init.resolution.width = wnd->GetWidth();
     bgfx_init.resolution.height = wnd->GetHeight();
     bgfx_init.resolution.reset = BGFX_RESET_VSYNC;
@@ -88,8 +97,7 @@ static void gfx_bgfx_init(void) {
 }
 
 static int gfx_bgfx_get_max_texture_size() {
-    // TODO: Implement this
-    return 4096;
+    return caps->limits.maxTextureSize;
 }
 
 static const char* gfx_bgfx_get_name() {
@@ -117,6 +125,16 @@ static void gfx_bgfx_load_shader(struct ShaderProgram* new_prg) {
 }
 
 static struct ShaderProgram* gfx_bgfx_create_and_load_new_shader(uint64_t shader_id0, uint32_t shader_id1) {
+    // compile vertex shader, with default arguments.
+    const bgfx::Memory* memVsh =  shaderc::compileShader(shaderc::ST_VERTEX, "vs_cubes.sc");
+    bgfx::ShaderHandle vsh = bgfx::createShader(memVsh);
+
+    // compile fragment shader, with specific arguments for defines, varying def file, shader profile.
+    const bgfx::Memory* memFsh =  shaderc::compileShader(shaderc::ST_FRAGMENT, "fs_cubes.sc", "myDefines", "varying.def.sc", "ps_5_0");
+    bgfx::ShaderHandle fsh = bgfx::createShader(memFsh);
+
+    // build program using shaders
+    auto mProgram = bgfx::createProgram(vsh, fsh, true);
     return nullptr;
 }
 
@@ -142,21 +160,21 @@ static void gfx_bgfx_select_texture(int tile, uint32_t texture_id) {
 }
 
 static void gfx_bgfx_upload_texture(const uint8_t* rgba32_buf, uint32_t width, uint32_t height) {
-    TextureDataBGFX* texture_data = &context.textures[context.current_texture_ids[context.current_tile]];
+    // TextureDataBGFX* texture_data = &context.textures[context.current_texture_ids[context.current_tile]];
 
-    bimg::ImageContainer* image = bimg::imageAlloc(
-        entry::getAllocator(),
-        bimg::TextureFormat::RGBA32U,
-        width,
-        height,
-        1,
-        1,
-        false,
-        false,
-        rgba32_buf
-    );
+    // bimg::ImageContainer* image = bimg::imageAlloc(
+    //     entry::getAllocator(),
+    //     bimg::TextureFormat::RGBA32U,
+    //     width,
+    //     height,
+    //     1,
+    //     1,
+    //     false,
+    //     false,
+    //     rgba32_buf
+    // );
 
-    context.
+    // context.
 }
 
 static void gfx_bgfx_set_sampler_parameters(int tile, bool linear_filter, uint32_t cms, uint32_t cmt) {
@@ -188,7 +206,7 @@ static void gfx_bgfx_draw_triangles(float buf_vbo[], size_t buf_vbo_len, size_t 
 }
 
 static void gfx_bgfx_on_resize(void) {
-
+    bgfx::reset(Ship::Context::GetInstance()->GetWindow()->GetWidth(), Ship::Context::GetInstance()->GetWindow()->GetHeight(), BGFX_RESET_VSYNC);
 }
 
 static void gfx_bgfx_start_frame(void) {
@@ -228,8 +246,15 @@ void gfx_bgfx_start_draw_to_framebuffer(int fb_id, float noise_scale) {
 
 }
 
-void gfx_bgfx_clear_framebuffer() {
-
+void gfx_bgfx_clear_framebuffer(bool color, bool depth) {
+    uint16_t flags = 0;
+    if (color) {
+        flags |= BGFX_CLEAR_COLOR;
+    }
+    if (depth) {
+        flags |= BGFX_CLEAR_DEPTH;
+    }
+    bgfx::setViewClear(kClearView, flags);
 }
 
 void gfx_bgfx_resolve_msaa_color_buffer(int fb_id_target, int fb_id_source) {
