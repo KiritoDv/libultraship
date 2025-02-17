@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <vector>
 #include <stack>
+#include <optional>
 
 #include "graphic/Fast3D/lus_gbi.h"
 #include "libultraship/libultra/types.h"
@@ -118,8 +119,7 @@ struct RawTexMetadata {
 };
 
 struct ShaderMod {
-    bool enabled = false;
-    int16_t id;
+    std::string path;
     uint8_t type;
 };
 
@@ -193,7 +193,7 @@ struct RDP {
     uint32_t other_mode_l, other_mode_h;
     uint64_t combine_mode;
     bool grayscale;
-    ShaderMod current_shader;
+    int16_t current_shader = -1;
 
     uint8_t prim_lod_fraction;
     struct RGBA env_color, prim_color, fog_color, fill_color, grayscale_color;
@@ -219,6 +219,7 @@ extern RDP g_rdp;
 extern RSP g_rsp;
 
 extern GfxExecStack g_exec_stack;
+extern std::optional<ShaderMod> gfx_get_shader(int16_t shaderId);
 
 extern "C" {
 

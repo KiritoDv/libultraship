@@ -192,6 +192,13 @@
 #define G_SETINTENSITY 0x40
 #define G_LOAD_SHADER 0x43
 
+typedef enum {
+    SHADER_TYPE_NONE = -1,
+    SHADER_TYPE_FRAGMENT,
+    SHADER_TYPE_VERTEX,
+    SHADER_TYPE_MAX
+} ShaderType;
+
 /*
  * The following commands are the "generated" RDP commands; the user
  * never sees them, the RSP microcode generates them.
@@ -2791,11 +2798,19 @@ typedef union Gfx {
 #define gsSPGrayscale(state) \
     { (_SHIFTL(G_SETGRAYSCALE, 24, 8)), (state) }
 
-#define gsSPLoadShader(shader, type) gsDma1p(G_LOAD_SHADER, shader, 0, type)
-#define gsSPUnloadShader() gsDma1p(G_LOAD_SHADER, 0, 0, 0)
+#define gsSPLoadShader(shader, type) \
+    { (_SHIFTL(G_LOAD_SHADER, 24, 8)) | (_SHIFTL((type), 16, 8)), (shader) }
 
-#define gSPLoadShader(pkt, shader, type) gDma1p(pkt, G_LOAD_SHADER, shader, 0, type)
-#define gSPUnloadShader(pkt) gDma1p(pkt, G_LOAD_SHADER, 0, 0, 0)
+#define gsSPUnloadShader(type) gsSPLoadShader(0, type)
+
+#define gSPLoadShader(pkt, shader, type) \
+    {                                      \
+        Gfx* _g = (Gfx*)(pkt);             \
+                                           \
+        _g->words.w0 = _SHIFTL(G_LOAD_SHADER, 24, 8) | _SHIFTL((type), 16, 8); \
+        _g->words.w1 = (shader);           \
+    }
+#define gSPUnloadShader(pkt, type) gSPLoadShader((pkt), 0, (type))
 
 #define gSPExtraGeometryMode(pkt, c, s)                                                 \
     _DW({                                                                               \

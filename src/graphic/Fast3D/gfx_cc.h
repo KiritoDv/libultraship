@@ -55,7 +55,7 @@ enum class ShaderOpts {
     TEXEL1_MASK,
     TEXEL0_BLEND,
     TEXEL1_BLEND,
-    USE_SHADER,
+    SHADER_ID,
     MAX
 };
 

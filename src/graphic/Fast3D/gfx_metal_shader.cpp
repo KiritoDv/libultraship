@@ -18,6 +18,7 @@
 #include <public/bridge/consolevariablebridge.h>
 #include "gfx_metal_shader.h"
 #include <prism/processor.h>
+#include "gfx_pc.h"
 
 // MARK: - String Helpers
 
@@ -238,11 +239,19 @@ MTL::VertexDescriptor* gfx_metal_build_shader(std::string& result, size_t& num_f
     init->Type = (uint32_t)Ship::ResourceType::Shader;
     init->ByteOrder = Ship::Endianness::Native;
     init->Format = RESOURCE_FORMAT_BINARY;
+    std::string path;
+    auto curr = gfx_get_shader(cc_features.shader_id);
+    if(curr.has_value() && curr->type == 1){
+        path = curr->path + ".metal";
+    } else {
+        path = "shaders/metal/default.shader.metal";
+    }
+
     auto res = static_pointer_cast<Ship::Shader>(Ship::Context::GetInstance()->GetResourceManager()->LoadResource(
-        "shaders/metal/default.shader.metal", true, init));
+            path, true, init));
 
     if (res == nullptr) {
-        SPDLOG_ERROR("Failed to load default metal shader, missing f3d.o2r?");
+        SPDLOG_ERROR("Failed to load metal shader {}", path);
         abort();
     }
 

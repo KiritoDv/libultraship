@@ -351,11 +351,19 @@ static std::string build_fs_shader(const CCFeatures& cc_features) {
     init->Type = (uint32_t)Ship::ResourceType::Shader;
     init->ByteOrder = Ship::Endianness::Native;
     init->Format = RESOURCE_FORMAT_BINARY;
+    std::string path;
+    auto curr = gfx_get_shader(cc_features.shader_id);
+    if(curr.has_value() && curr->type == 0 && !curr->path.empty()){
+        path = curr->path + ".fs";
+    } else {
+        path = "shaders/opengl/default.shader.fs";
+    }
+
     auto res = static_pointer_cast<Ship::Shader>(Ship::Context::GetInstance()->GetResourceManager()->LoadResource(
-        "shaders/opengl/default.shader.fs", true, init));
+            path, true, init));
 
     if (res == nullptr) {
-        SPDLOG_ERROR("Failed to load default fragment shader, missing f3d.o2r?");
+        SPDLOG_ERROR("Failed to load fragment shader {}", path);
         abort();
     }
 
@@ -408,11 +416,23 @@ static std::string build_vs_shader(const CCFeatures& cc_features) {
     init->Type = (uint32_t)Ship::ResourceType::Shader;
     init->ByteOrder = Ship::Endianness::Native;
     init->Format = RESOURCE_FORMAT_BINARY;
+    std::string path;
+    auto curr = gfx_get_shader(cc_features.shader_id);
+    if(curr.has_value() && curr->type == 1){
+        if(!curr->path.empty()){
+            path = curr->path + ".vs";
+        } else {
+            path = "shaders/opengl/default.shader.vs";
+        }
+    } else {
+        path = "shaders/opengl/default.shader.vs";
+    }
+
     auto res = static_pointer_cast<Ship::Shader>(Ship::Context::GetInstance()->GetResourceManager()->LoadResource(
-        "shaders/opengl/default.shader.vs", true, init));
+            path, true, init));
 
     if (res == nullptr) {
-        SPDLOG_ERROR("Failed to load default vertex shader, missing f3d.o2r?");
+        SPDLOG_ERROR("Failed to load vertex shader {}", path);
         abort();
     }
 

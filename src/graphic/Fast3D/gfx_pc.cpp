@@ -145,7 +145,10 @@ struct MaskedTextureEntry {
 };
 
 static map<string, MaskedTextureEntry> masked_textures;
-static std::vector<std::string> shader_ids;
+static std::vector<ShaderMod> shader_ids = {
+    { "", 0 },
+    { "", 1 },
+};
 
 static UcodeHandlers ucode_handler_index = ucode_f3dex2;
 
@@ -1552,19 +1555,12 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
     if (g_rdp.loaded_texture[1].blended) {
         cc_options |= SHADER_OPT(TEXEL1_BLEND);
     }
-    if (shader.enabled) {
-        cc_options |= SHADER_OPT(USE_SHADER);
-        cc_options |= (shader.id << 17);
-    }
+
+    cc_options |= ((uint64_t)(int16_t)shader << (int) ShaderOpts::SHADER_ID);
 
     ColorCombinerKey key;
     key.combine_mode = g_rdp.combine_mode;
     key.options = cc_options;
-
-    // If we are not using alpha, clear the alpha components of the combiner as they have no effect
-    if (!use_alpha && !shader.enabled) {
-        key.combine_mode &= ~((0xfff << 16) | ((uint64_t)0xfff << 44));
-    }
 
     ColorCombiner* comb = gfx_lookup_or_create_color_combiner(key);
 
@@ -1831,6 +1827,8 @@ static void gfx_sp_tri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx, bo
         // if (++buf_vbo_num_tris == 1) {
         gfx_flush();
     }
+
+    g_rdp.current_shader = -1;
 }
 
 static void gfx_sp_geometry_mode(uint32_t clear, uint32_t set) {
@@ -2929,32 +2927,43 @@ bool gfx_movemem_handler_otr(F3DGfx** cmd0) {
     return false;
 }
 
-int16_t gfx_create_shader(const std::string& path) {
-    std::shared_ptr<Ship::ResourceInitData> initData = std::make_shared<Ship::ResourceInitData>();
-    initData->Path = path;
-    initData->IsCustom = false;
-    initData->ByteOrder = Ship::Endianness::Native;
-    auto shader = Ship::Context::GetInstance()->GetResourceManager()->GetArchiveManager()->LoadFile(path, initData);
-    if (shader == nullptr || !shader->IsLoaded) {
+int16_t gfx_create_shader(const std::string& path, uint8_t type) {
+    if(path.empty()) {
         return -1;
     }
-    shader_ids.push_back(std::string(shader->Buffer->data()));
+    for (int i = 0; i < shader_ids.size(); i++) {
+        if (shader_ids[i].path == path && shader_ids[i].type == type) {
+            return i;
+        }
+    }
+    shader_ids.push_back({path, type});
     return shader_ids.size() - 1;
 }
 
 bool gfx_set_shader_custom(F3DGfx** cmd0) {
     F3DGfx* cmd = *cmd0;
     char* file = (char*)cmd->words.w1;
+    uint8_t type = C0(16, 8);
 
-    if (file == nullptr) {
-        g_rdp.current_shader = { 0, 0, false };
+    if(type < 0 || type > 1) {
+        g_rdp.current_shader = -1;
         return false;
     }
 
-    const auto path = std::string(file);
-    const auto shaderId = gfx_create_shader(path);
-    g_rdp.current_shader = { true, shaderId, (uint8_t)C0(16, 1) };
+    if (file == nullptr) {
+        g_rdp.current_shader = type;
+        return false;
+    }
+
+    g_rdp.current_shader = gfx_create_shader(std::string(file), type);
     return false;
+}
+
+std::optional<ShaderMod> gfx_get_shader(int16_t shaderId) {
+    if (shaderId < 0 || shaderId >= shader_ids.size()) {
+        return std::nullopt;
+    }
+    return shader_ids[shaderId];
 }
 
 bool gfx_moveword_handler_f3dex2(F3DGfx** cmd0) {
