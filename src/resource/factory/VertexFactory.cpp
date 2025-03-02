@@ -17,9 +17,15 @@ std::shared_ptr<Ship::IResource> ResourceFactoryBinaryVertexV0::ReadResource(std
 
     for (uint32_t i = 0; i < count; i++) {
         Vtx data;
+#ifdef GBI_FLOATS
+        data.v.ob[0] = reader->ReadFloat();
+        data.v.ob[1] = reader->ReadFloat();
+        data.v.ob[2] = reader->ReadFloat();
+#else
         data.v.ob[0] = reader->ReadInt16();
         data.v.ob[1] = reader->ReadInt16();
         data.v.ob[2] = reader->ReadInt16();
+#endif
         data.v.flag = reader->ReadUInt16();
         data.v.tc[0] = reader->ReadInt16();
         data.v.tc[1] = reader->ReadInt16();
