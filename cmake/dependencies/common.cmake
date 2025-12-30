@@ -9,7 +9,7 @@ set(imgui_apply_patch_command ${CMAKE_COMMAND} -Dpatch_file=${imgui_fixes_and_co
 FetchContent_Declare(
     ImGui
     GIT_REPOSITORY https://github.com/ocornut/imgui.git
-    GIT_TAG v1.91.6-docking
+    GIT_TAG v1.91.9b-docking
     PATCH_COMMAND ${imgui_apply_patch_command}
 )
 FetchContent_MakeAvailable(ImGui)
@@ -36,7 +36,7 @@ target_sources(ImGui
 target_include_directories(ImGui PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends PRIVATE ${SDL2_INCLUDE_DIRS})
 
 # ========= StormLib =============
-if(NOT EXCLUDE_MPQ_SUPPORT)
+if(INCLUDE_MPQ_SUPPORT)
     set(stormlib_patch_file ${CMAKE_CURRENT_SOURCE_DIR}/cmake/dependencies/patches/stormlib-optimizations.patch)
     set(stormlib_apply_patch_command ${CMAKE_COMMAND} -Dpatch_file=${stormlib_patch_file} -Dwith_reset=TRUE -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/dependencies/git-patch.cmake)
 
@@ -108,6 +108,6 @@ option(PRISM_STANDALONE "Build prism as a standalone library" OFF)
 FetchContent_Declare(
     prism
     GIT_REPOSITORY https://github.com/KiritoDv/prism-processor.git
-    GIT_TAG fb3f8b4a2d14dfcbae654d0f0e59a73b6f6ca850
+    GIT_TAG bbcbc7e3f890a5806b579361e7aa0336acd547e7
 )
 FetchContent_MakeAvailable(prism)
