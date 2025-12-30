@@ -1124,7 +1124,7 @@ typedef union {
 typedef struct {
     const char* file;
     int idx;
-    bool valid;
+    uint32_t valid;
 } F3DTrace;
 #endif
 

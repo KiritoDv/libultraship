@@ -2711,6 +2711,7 @@ bool gfx_marker_handler_otr(F3DGfx** cmd0) {
     F3DGfx* cmd = (*cmd0);
     const uint64_t hash = ((uint64_t)(cmd)->words.w0 << 32) + (cmd)->words.w1;
     std::string dlName = ResourceGetNameByCrc(hash);
+    SPDLOG_INFO("GFX MARKER: {}", dlName);
     gfx->mMarkerOn = true;
     return false;
 }
@@ -2820,9 +2821,9 @@ bool gfx_mtx_otr_handler_custom_f3d(F3DGfx** cmd0) {
 
     const uint64_t hash = ((uint64_t)cmd->words.w0 << 32) + cmd->words.w1;
     const int32_t* mtx = (const int32_t*)ResourceGetDataByCrc(hash);
-    if (mtx != nullptr) {
+    if (mtx != NULL) {
         cmd--;
-        gfx->GfxSpMatrix(C0(16, 8), (const int32_t*)gfx->SegAddr(cmd->words.w1));
+        gfx->GfxSpMatrix(C0(16, 8), mtx);
         cmd++;
     }
     return false;
@@ -2832,7 +2833,7 @@ bool gfx_mtx_otr_handler_custom(F3DGfx** cmd0) {
     if (ucode_handler_index == ucode_f3dex2) {
         return gfx_mtx_otr_handler_custom_f3dex2(cmd0);
     } else {
-        return gfx_mtx_otr_handler_custom_f3d(cmd0);
+         return gfx_mtx_otr_handler_custom_f3d(cmd0);
     }
 }
 
@@ -2876,20 +2877,18 @@ bool gfx_movemem_handler_otr(F3DGfx** cmd0) {
     Interpreter* gfx = mInstance.lock().get();
     F3DGfx* cmd = *cmd0;
 
-    const uint8_t index = C1(24, 8);
-    const uint8_t offset = C1(16, 8);
-    const uint8_t hasOffset = C1(8, 8);
+    const uint16_t len = C1(0, 16);
+    const uint8_t  ofs = C1(16, 8);
+    const uint8_t  idx = C1(24, 8);
 
     (*cmd0)++;
 
     const uint64_t hash = ((uint64_t)(*cmd0)->words.w0 << 32) + (*cmd0)->words.w1;
 
     if (ucode_handler_index == ucode_f3dex2) {
-        gfx->GfxSpMovememF3dex2(index, offset, ResourceGetDataByCrc(hash));
+        gfx->GfxSpMovememF3dex2(idx, ofs, ResourceGetDataByCrc(hash));
     } else {
-        auto light = (Fast::LightEntry*)ResourceGetDataByCrc(hash);
-        uintptr_t data = (uintptr_t)&light->Ambient;
-        gfx->GfxSpMovememF3d(index, offset, (void*)(data + (hasOffset == 1 ? 0x8 : 0)));
+        gfx->GfxSpMovememF3d(idx, ofs, ResourceGetDataByCrc(hash));
     }
     return false;
 }
@@ -4109,7 +4108,7 @@ static void gfx_step() {
     int8_t opcode = (int8_t)(cmd->words.w0 >> 24);
 
 #ifdef USE_GBI_TRACE
-    if (cmd->words.trace.valid && CVarGetInteger("gEnableGFXTrace", 0)) {
+    if (cmd->words.trace.valid == 0xB00B && CVarGetInteger("gEnableGFXTrace", 0)) {
 #define TRACE                                  \
     "\n====================================\n" \
     " - CMD: {:02X}\n"                         \

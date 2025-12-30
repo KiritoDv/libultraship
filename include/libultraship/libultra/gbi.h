@@ -1654,12 +1654,12 @@ typedef struct {
 typedef struct {
     const char* file;
     int idx;
-    bool valid;
+    uint32_t valid;
 } Trace;
 
 #define MakeTrace()              \
     , {                          \
-        __FILE__, __LINE__, true \
+        __FILE__, __LINE__, 0xB00B \
     }
 #else
 #define MakeTrace()
@@ -1745,7 +1745,7 @@ typedef union Gfx {
         _g->words.w1 = (uintptr_t)(s);                                                    \
         _g->words.trace.file = __FILE__;                                                  \
         _g->words.trace.idx = __LINE__;                                                   \
-        _g->words.trace.valid = true;                                                     \
+        _g->words.trace.valid = 0xB00B;                                                     \
     })
 #else
 #define gDma1p(pkt, c, s, l, p)                                                           \
@@ -1756,8 +1756,8 @@ typedef union Gfx {
         _g->words.w1 = (uintptr_t)(s);                                                    \
     })
 #endif
-#define gsDma1p(c, s, l, p) \
-    { (_SHIFTL((c), 24, 8) | _SHIFTL((p), 16, 8) | _SHIFTL((l), 0, 16)), (uintptr_t)(s)MakeTrace() }
+#define gsDma1p(c, s, l, idx) \
+    { (_SHIFTL((c), 24, 8) | _SHIFTL((idx), 16, 8) | _SHIFTL((l), 0, 16)), (uintptr_t)(s)MakeTrace() }
 
 #ifdef USE_GBI_TRACE
 #define gDma2p(pkt, c, adrs, len, idx, ofs)                                                                          \
@@ -1768,7 +1768,7 @@ typedef union Gfx {
         _g->words.w1 = (uintptr_t)(adrs);                                                                            \
         _g->words.trace.file = __FILE__;                                                                             \
         _g->words.trace.idx = __LINE__;                                                                              \
-        _g->words.trace.valid = true;                                                                                \
+        _g->words.trace.valid = 0xB00B;                                                                                \
     })
 #else
 #define gDma2p(pkt, c, adrs, len, idx, ofs)                                                                          \
@@ -1815,7 +1815,7 @@ typedef union Gfx {
         _g->words.w1 = (uintptr_t)(v);                                                          \
         _g->words.trace.file = __FILE__;                                                        \
         _g->words.trace.idx = __LINE__;                                                         \
-        _g->words.trace.valid = true;                                                           \
+        _g->words.trace.valid = 0xB00B;                                                         \
     })
 #else
 #define __gSPVertex(pkt, v, n, v0)                                                              \
@@ -2439,8 +2439,8 @@ typedef union Gfx {
 #define gsSPLight(l, n) gsDma2p(G_MOVEMEM, (l), sizeof(Light), G_MV_LIGHT, (n)*24 + 24)
 #else /* F3DEX_GBI_2 */
 #define gSPLight(pkt, l, n) gDma1p(pkt, G_MOVEMEM, l, sizeof(Light), ((n)-1) * 2 + G_MV_L0)
-#define gsSPLight(l, n) gsDma1p(G_MOVEMEM, l, sizeof(Light), ((n)-1) * 2 + G_MV_L0)
-#endif /* F3DEX_GBI_2 */
+#define gsSPLight(l, n) gsDma1p(G_MOVEMEM, l,  sizeof(Light), ((n)-1) * 2 + G_MV_L0)
+#endif /* F3DEX_GBI_2 */      //Opcode     Ptr Length         Index
 
 /*
  * gSPLightColor changes color of light without recalculating light direction
