@@ -36,6 +36,7 @@
 #include "ship/config/ConsoleVariable.h"
 
 #include "libultraship/libultra/os.h"
+#include "libultraship/bridge.h"
 
 #include <spdlog/fmt/fmt.h>
 
@@ -2712,6 +2713,7 @@ bool gfx_marker_handler_otr(F3DGfx** cmd0) {
     F3DGfx* cmd = (*cmd0);
     const uint64_t hash = ((uint64_t)(cmd)->words.w0 << 32) + (cmd)->words.w1;
     std::string dlName = ResourceGetNameByCrc(hash);
+    auto dl = Ship::Context::GetInstance()->GetResourceManager()->GetResourceRawPointer(hash);
     SPDLOG_INFO("GFX MARKER: {}", dlName);
     gfx->mMarkerOn = true;
     return false;
