@@ -491,14 +491,14 @@ void GfxRenderingAPIMetal::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, si
             }
         }
 
-        if(mCurrentFilterMode == FILTER_THREE_POINT) {
+        if (mCurrentFilterMode == FILTER_THREE_POINT) {
             mDrawUniforms.textureFiltering[i] = mTextures[mCurrentTextureIds[i]].filtering;
             mDrawUniforms.textureFiltering[i] = mTextures[mCurrentTextureIds[i]].filtering;
             textures_changed = true;
         }
     }
 
-    if(textures_changed) {
+    if (textures_changed) {
         current_framebuffer.mCommandEncoder->setFragmentBytes(&mDrawUniforms, sizeof(DrawUniforms), 1);
     }
 
