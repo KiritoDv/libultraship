@@ -74,6 +74,7 @@ struct TextureDataMetal {
     MTL::SamplerState* sampler;
     uint32_t width;
     uint32_t height;
+    uint32_t filtering;
     bool linear_filtering;
 };
 
@@ -108,6 +109,10 @@ struct FramebufferMetal {
 struct FrameUniforms {
     simd::int1 frameCount;
     simd::float1 noiseScale;
+};
+
+struct DrawUniforms {
+    simd::int1 textureFiltering[SHADER_MAX_TEXTURES];
 };
 
 struct CoordUniforms {
@@ -183,6 +188,7 @@ class GfxRenderingAPIMetal final : public GfxRenderingAPI {
     std::vector<FramebufferMetal> mFramebuffers;
     FrameUniforms mFrameUniforms;
     CoordUniforms mCoordUniforms;
+    DrawUniforms mDrawUniforms;
     MTL::Buffer* mFrameUniformBuffer;
 
     uint32_t mMsaaNumQualityLevels[METAL_MAX_MULTISAMPLE_SAMPLE_COUNT];

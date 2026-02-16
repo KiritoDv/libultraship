@@ -224,6 +224,7 @@ MTL::VertexDescriptor* gfx_metal_build_shader(std::string& result, size_t& numFl
         { "SHADER_1", SHADER_1 },
         { "SHADER_COMBINED", SHADER_COMBINED },
         { "SHADER_NOISE", SHADER_NOISE },
+        { "FILTER_THREE_POINT", Fast::FILTER_THREE_POINT },
         { "o_c", M_ARRAY(cc_features.c, int, 2, 2, 4) },
         { "o_alpha", cc_features.opt_alpha },
         { "o_fog", cc_features.opt_fog },

@@ -353,6 +353,7 @@ void GfxRenderingAPIMetal::UploadTexture(const uint8_t* rgba32_buf, uint32_t wid
 void GfxRenderingAPIMetal::SetSamplerParameters(int tile, bool linear_filter, uint32_t cms, uint32_t cmt) {
     TextureDataMetal* texture_data = &mTextures[mCurrentTextureIds[tile]];
     texture_data->linear_filtering = linear_filter;
+    texture_data->filtering = !linear_filter ? FILTER_LINEAR : FILTER_THREE_POINT;
 
     // This function is called twice per texture, the first one only to set default values.
     // Maybe that could be skipped? Anyway, make sure to release the first default sampler
@@ -414,6 +415,7 @@ void GfxRenderingAPIMetal::SetUseAlpha(bool use_alpha) {
 
 void GfxRenderingAPIMetal::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, size_t buf_vbo_num_tris) {
     NS::AutoreleasePool* autorelease_pool = NS::AutoreleasePool::alloc()->init();
+    bool textures_changed = false;
 
     auto& current_framebuffer = mFramebuffers[mCurrentFramebuffer];
 
@@ -488,6 +490,16 @@ void GfxRenderingAPIMetal::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, si
                 }
             }
         }
+
+        if(mCurrentFilterMode == FILTER_THREE_POINT) {
+            mDrawUniforms.textureFiltering[i] = mTextures[mCurrentTextureIds[i]].filtering;
+            mDrawUniforms.textureFiltering[i] = mTextures[mCurrentTextureIds[i]].filtering;
+            textures_changed = true;
+        }
+    }
+
+    if(textures_changed) {
+        current_framebuffer.mCommandEncoder->setFragmentBytes(&mDrawUniforms, sizeof(DrawUniforms), 1);
     }
 
     if (current_framebuffer.mLastShaderProgram != mShaderProgram) {
