@@ -258,6 +258,18 @@ void Gui::LoadTextureFromRawImage(const std::string& name, const std::string& pa
     mGuiTextures[name] = guiTexture->Metadata;
 }
 
+void Gui::LoadTextureFromResource(const std::string& name, std::shared_ptr<GuiTexture> texture) {
+    Fast::GfxRenderingAPI* api = mInterpreter.lock()->GetCurrentRenderingAPI();
+
+    texture->Metadata.RendererTextureId = api->NewTexture();
+    api->SelectTexture(0, texture->Metadata.RendererTextureId);
+    api->SetSamplerParameters(0, false, 0, 0);
+    api->UploadTexture(texture->Data, texture->Metadata.Width, texture->Metadata.Height);
+
+    mGuiTextures[name] = texture->Metadata;
+}
+    
+
 bool Gui::SupportsViewports() {
 #ifdef __linux__
     const char* currentDesktop = std::getenv("XDG_CURRENT_DESKTOP");
