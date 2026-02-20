@@ -268,7 +268,6 @@ void Gui::LoadTextureFromResource(const std::string& name, std::shared_ptr<GuiTe
 
     mGuiTextures[name] = texture->Metadata;
 }
-    
 
 bool Gui::SupportsViewports() {
 #ifdef __linux__
