@@ -39,6 +39,8 @@
 
 #include <spdlog/fmt/fmt.h>
 
+#include "libultraship/bridge/consolevariablebridge.h"
+
 std::stack<std::string> currentDir;
 
 #define SEG_ADDR(seg, addr) (addr | (seg << 24) | 1)
@@ -1619,6 +1621,30 @@ void Interpreter::GfxSpTri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx
         return;
     }
 
+    // 1. Setup differences in screen space (X, Y)
+    float dx21 = v2->x - v1->x;
+    float dx31 = v3->x - v1->x;
+    float dy21 = v2->y - v1->y;
+    float dy31 = v3->y - v1->y;
+
+    // 2. The Determinant (Area of the triangle)
+    float det = (dx21 * dy31 - dx31 * dy21);
+    if (fabsf(det) < 1e-6f) return; // Skip degenerate triangles
+    float invDet = 1.0f / det;
+
+    // 3. Setup differences in Texture space (U, V)
+    float du21 = v2->u - v1->u;
+    float du31 = v3->u - v1->u;
+    float dv21 = v2->v - v1->v;
+    float dv31 = v3->v - v1->v;
+
+    // 4. THE EQUIVALENTS:
+    // This is ddx(uv.x)
+    float ddxuvx = (du21 * dy31 - du31 * dy21) * invDet;
+
+    // This is ddy(uv.y)
+    float ddyuvy = (dv31 * dx21 - dv21 * dx31) * invDet;
+
     const uint32_t cull_both = get_attr(CULL_BOTH);
     const uint32_t cull_front = get_attr(CULL_FRONT);
     const uint32_t cull_back = get_attr(CULL_BACK);
@@ -2006,15 +2032,39 @@ void Interpreter::GfxSpTri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx
                     }
                     case G_CCMUX_LOD_FRACTION: {
                         if (mRdp->other_mode_l & G_TL_LOD) {
-                            // "Hack" that works for Bowser - Peach painting
-                            float distance_frac = (v1->w - 3000.0f) / 3000.0f;
-                            if (distance_frac < 0.0f) {
-                                distance_frac = 0.0f;
-                            }
-                            if (distance_frac > 1.0f) {
-                                distance_frac = 1.0f;
-                            }
-                            tmp.r = tmp.g = tmp.b = tmp.a = distance_frac * 255.0f;
+                            bool sharpen = (mRdp->other_mode_h & G_TD_SHARPEN) != 0;
+                            bool detail = (mRdp->other_mode_h & G_TD_DETAIL) != 0;
+                            int tileMax = mRdp->level;
+                            float lodScale = 1.0f;
+                            float maxDst = (v1->w - 700.0f) / 700.0f; //std::max(abs(ddxuvx), abs(ddyuvy)) * lodScale;
+                            int tileBase = floor(log2(maxDst));
+                            float lodFraction = CVarGetFloat("gDistanceTest", 1.0f);//maxDst / pow(2, std::max(tileBase, 0));
+                       
+                            // if(sharpen && maxDst < 1.0f) {
+                            //     lodFraction = maxDst - 1.0f;
+                            // }
+                            //
+                            // if(detail) {
+                            //     if(lodFraction < 0.0f) {
+                            //         lodFraction = 1.0f;
+                            //     }
+                            //     tileBase += 1;
+                            // } else {
+                            //     if(tileBase >= tileMax) {
+                            //         lodFraction = 1.0f;
+                            //     }
+                            // }
+                            //
+                            // if(detail || sharpen) {
+                            //     tileBase = std::max(tileBase, 0);
+                            // } else {
+                            //     lodFraction = std::max(lodFraction, 0.0f);
+                            // }
+
+                            int tileIndex0 = std::clamp(tileBase, 0, tileMax);
+                            int tileIndex1 = std::clamp(tileBase + 1, 0, tileMax);
+
+                            tmp.r = tmp.g = tmp.b = tmp.a = std::clamp(lodFraction, 0.0f, 1.0f) * 255.0f;
                         } else {
                             tmp.r = tmp.g = tmp.b = tmp.a = 255.0f;
                         }
@@ -2211,12 +2261,13 @@ void Interpreter::GfxSpMovewordF3d(uint8_t index, uint16_t offset, uintptr_t dat
 void Interpreter::GfxSpTexture(uint16_t sc, uint16_t tc, uint8_t level, uint8_t tile, uint8_t on) {
     mRsp->texture_scaling_factor.s = sc;
     mRsp->texture_scaling_factor.t = tc;
-    if (mRdp->first_tile_index != tile) {
+    if (mRdp->first_tile_index != tile || mRdp->level != level) {
         mRdp->textures_changed[0] = true;
         mRdp->textures_changed[1] = true;
     }
 
     mRdp->first_tile_index = tile;
+    mRdp->level = level;
 }
 
 void Interpreter::GfxDpSetScissor(uint32_t mode, uint32_t ulx, uint32_t uly, uint32_t lrx, uint32_t lry) {
@@ -2269,10 +2320,10 @@ void Interpreter::GfxDpSetTile(uint8_t fmt, uint32_t siz, uint32_t line, uint32_
     mRdp->texture_tile[tile].line_size_bytes = line * 8;
 
     mRdp->texture_tile[tile].tmem = tmem;
-    // mRdp->texture_tile[tile].tmem_index = tmem / 256; // tmem is the 64-bit word offset, so 256 words means 2 kB
+    mRdp->texture_tile[tile].tmem_index = tmem / 256; // tmem is the 64-bit word offset, so 256 words means 2 kB // Emilll, help
 
-    mRdp->texture_tile[tile].tmem_index =
-        tmem != 0; // assume one texture is loaded at address 0 and another texture at any other address
+    // mRdp->texture_tile[tile].tmem_index =
+    //     tmem != 0; // assume one texture is loaded at address 0 and another texture at any other address
 
     mRdp->textures_changed[0] = true;
     mRdp->textures_changed[1] = true;

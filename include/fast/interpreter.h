@@ -297,6 +297,7 @@ struct RDP {
     bool textures_changed[2];
 
     uint8_t first_tile_index;
+    uint8_t level;
 
     uint32_t other_mode_l, other_mode_h;
     uint64_t combine_mode;
