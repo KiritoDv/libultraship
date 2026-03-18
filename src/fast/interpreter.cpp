@@ -69,6 +69,8 @@ std::stack<std::string> currentDir;
 namespace Fast {
 
 static UcodeHandlers ucode_handler_index = ucode_f3dex2;
+static uint8_t tmem_to_texture_index[512];
+static uint8_t next_texture_index;
 
 const static uint32_t f3dex2AttrHandler[] = {
     F3DEX2_G_MTX_PROJECTION, F3DEX2_G_MTX_LOAD,  F3DEX2_G_MTX_PUSH,  F3DEX_G_MTX_NOPUSH,
@@ -1796,11 +1798,6 @@ void Interpreter::GfxSpTri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx
 
     for (int i = 0; i < 2; i++) {
         uint32_t tile = mRdp->first_tile_index + i;
-
-        // No LOD support: force both slots to the base mip level.
-        if (i == 1 && mRdp->first_tile_index >= 2) {
-            tile = mRdp->first_tile_index;
-        }
         effective_tile[i] = tile;
 
         if (comb->usedTextures[i]) {
@@ -2032,39 +2029,15 @@ void Interpreter::GfxSpTri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx
                     }
                     case G_CCMUX_LOD_FRACTION: {
                         if (mRdp->other_mode_l & G_TL_LOD) {
-                            bool sharpen = (mRdp->other_mode_h & G_TD_SHARPEN) != 0;
-                            bool detail = (mRdp->other_mode_h & G_TD_DETAIL) != 0;
-                            int tileMax = mRdp->level;
-                            float lodScale = 1.0f;
-                            float maxDst = (v1->w - 700.0f) / 700.0f; //std::max(abs(ddxuvx), abs(ddyuvy)) * lodScale;
-                            int tileBase = floor(log2(maxDst));
-                            float lodFraction = CVarGetFloat("gDistanceTest", 1.0f);//maxDst / pow(2, std::max(tileBase, 0));
-                       
-                            // if(sharpen && maxDst < 1.0f) {
-                            //     lodFraction = maxDst - 1.0f;
-                            // }
-                            //
-                            // if(detail) {
-                            //     if(lodFraction < 0.0f) {
-                            //         lodFraction = 1.0f;
-                            //     }
-                            //     tileBase += 1;
-                            // } else {
-                            //     if(tileBase >= tileMax) {
-                            //         lodFraction = 1.0f;
-                            //     }
-                            // }
-                            //
-                            // if(detail || sharpen) {
-                            //     tileBase = std::max(tileBase, 0);
-                            // } else {
-                            //     lodFraction = std::max(lodFraction, 0.0f);
-                            // }
-
-                            int tileIndex0 = std::clamp(tileBase, 0, tileMax);
-                            int tileIndex1 = std::clamp(tileBase + 1, 0, tileMax);
-
-                            tmp.r = tmp.g = tmp.b = tmp.a = std::clamp(lodFraction, 0.0f, 1.0f) * 255.0f;
+                            // "Hack" that works for Bowser - Peach painting
+                            float distance_frac = (v1->w - 3000.0f) / 3000.0f;
+                            if (distance_frac < 0.0f) {
+                                distance_frac = 0.0f;
+                            }
+                            if (distance_frac > 1.0f) {
+                                distance_frac = 1.0f;
+                            }
+                            tmp.r = tmp.g = tmp.b = tmp.a = distance_frac * 255.0f;
                         } else {
                             tmp.r = tmp.g = tmp.b = tmp.a = 255.0f;
                         }
@@ -2262,12 +2235,13 @@ void Interpreter::GfxSpTexture(uint16_t sc, uint16_t tc, uint8_t level, uint8_t 
     mRsp->texture_scaling_factor.s = sc;
     mRsp->texture_scaling_factor.t = tc;
     if (mRdp->first_tile_index != tile || mRdp->level != level) {
-        mRdp->textures_changed[0] = true;
-        mRdp->textures_changed[1] = true;
+        for(int i = 0; i < MAX_TMEM_TEXTURES; i++) {
+            mRdp->textures_changed[i] = true;
+        }
     }
 
     mRdp->first_tile_index = tile;
-    mRdp->level = level;
+    mRdp->level = level + 1;
 }
 
 void Interpreter::GfxDpSetScissor(uint32_t mode, uint32_t ulx, uint32_t uly, uint32_t lrx, uint32_t lry) {
@@ -2318,15 +2292,18 @@ void Interpreter::GfxDpSetTile(uint8_t fmt, uint32_t siz, uint32_t line, uint32_
     mRdp->texture_tile[tile].shifts = shifts;
     mRdp->texture_tile[tile].shiftt = shiftt;
     mRdp->texture_tile[tile].line_size_bytes = line * 8;
-
     mRdp->texture_tile[tile].tmem = tmem;
-    mRdp->texture_tile[tile].tmem_index = tmem / 256; // tmem is the 64-bit word offset, so 256 words means 2 kB // Emilll, help
 
-    // mRdp->texture_tile[tile].tmem_index =
-    //     tmem != 0; // assume one texture is loaded at address 0 and another texture at any other address
+    if (tmem_to_texture_index[tmem] == -1) {
+        tmem_to_texture_index[tmem] = next_texture_index++;
+        assert(next_texture_index <= MAX_TMEM_TEXTURES && "Exceeded maximum number of TMEM textures");
+    }
 
-    mRdp->textures_changed[0] = true;
-    mRdp->textures_changed[1] = true;
+    mRdp->texture_tile[tile].tmem_index = tmem_to_texture_index[tmem];
+
+    for(int i = 0; i < MAX_TMEM_TEXTURES; i++) {
+        mRdp->textures_changed[i] = true;
+    }
 }
 
 void Interpreter::GfxDpSetTileSize(uint8_t tile, uint16_t uls, uint16_t ult, uint16_t lrs, uint16_t lrt) {
@@ -2334,8 +2311,9 @@ void Interpreter::GfxDpSetTileSize(uint8_t tile, uint16_t uls, uint16_t ult, uin
     mRdp->texture_tile[tile].ult = ult;
     mRdp->texture_tile[tile].lrs = lrs;
     mRdp->texture_tile[tile].lrt = lrt;
-    mRdp->textures_changed[0] = true;
-    mRdp->textures_changed[1] = true;
+    for(int i = 0; i < MAX_TMEM_TEXTURES; i++) {
+        mRdp->textures_changed[i] = true;
+    }
 }
 
 void Interpreter::GfxDpLoadTlut(uint8_t tile, uint32_t high_index) {
@@ -2760,15 +2738,17 @@ void Interpreter::GfxDpTextureRectangle(int32_t ulx, int32_t uly, int32_t lrx, i
 
     uint8_t saved_tile = mRdp->first_tile_index;
     if (saved_tile != tile) {
-        mRdp->textures_changed[0] = true;
-        mRdp->textures_changed[1] = true;
+        for(int i = 0; i < MAX_TMEM_TEXTURES; i++) {
+            mRdp->textures_changed[i] = true;
+        }
     }
     mRdp->first_tile_index = tile;
 
     GfxDrawRectangle(ulx, uly, lrx, lry);
     if (saved_tile != tile) {
-        mRdp->textures_changed[0] = true;
-        mRdp->textures_changed[1] = true;
+        for(int i = 0; i < MAX_TMEM_TEXTURES; i++) {
+            mRdp->textures_changed[i] = true;
+        }
     }
     mRdp->first_tile_index = saved_tile;
     mRdp->combine_mode = saved_combine_mode;
@@ -2809,15 +2789,17 @@ void Interpreter::GfxDpImageRectangle(int32_t tile, int32_t w, int32_t h, int32_
 
     uint8_t saved_tile = mRdp->first_tile_index;
     if (saved_tile != tile) {
-        mRdp->textures_changed[0] = true;
-        mRdp->textures_changed[1] = true;
+        for(int i = 0; i < MAX_TMEM_TEXTURES; i++) {
+            mRdp->textures_changed[i] = true;
+        }
     }
     mRdp->first_tile_index = tile;
 
     GfxDrawRectangle(ulx, uly, lrx, lry);
     if (saved_tile != tile) {
-        mRdp->textures_changed[0] = true;
-        mRdp->textures_changed[1] = true;
+        for(int i = 0; i < MAX_TMEM_TEXTURES; i++) {
+            mRdp->textures_changed[i] = true;
+        }
     }
     mRdp->first_tile_index = saved_tile;
 }
@@ -3979,8 +3961,9 @@ bool gfx_set_timg_fb_handler_custom(F3DGfx** cmd0) {
 
     gfx->Flush();
     gfx->mRapi->SelectTextureFb((uint32_t)cmd->words.w1);
-    gfx->mRdp->textures_changed[0] = false;
-    gfx->mRdp->textures_changed[1] = false;
+    for(int i = 0; i < MAX_TMEM_TEXTURES; i++) {
+        gfx->mRdp->textures_changed[i] = false;
+    }
     return false;
 }
 
@@ -4640,8 +4623,9 @@ void Interpreter::Destroy() {
     // Texture cache and loaded textures store references to Resources which need to be unreferenced.
     TextureCacheClear();
     mRdp->texture_to_load.raw_tex_metadata.resource = nullptr;
-    mRdp->loaded_texture[0].raw_tex_metadata.resource = nullptr;
-    mRdp->loaded_texture[1].raw_tex_metadata.resource = nullptr;
+    for(int i = 0; i < MAX_TMEM_TEXTURES; i++) {
+        mRdp->loaded_texture[i].raw_tex_metadata.resource = nullptr;
+    }
 }
 
 GfxRenderingAPI* Interpreter::GetCurrentRenderingAPI() {
@@ -4718,6 +4702,9 @@ void Interpreter::StartFrame() {
     }
 
     mFbActive = false;
+
+    memset(tmem_to_texture_index + 1, -1, 512);
+    next_texture_index = 1;
 }
 
 GfxExecStack g_exec_stack = {};

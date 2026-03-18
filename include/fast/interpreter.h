@@ -256,6 +256,9 @@ struct RSP {
     ShaderMod current_shader;
 };
 
+#define MAX_TMEM_TEXTURES 6
+#define MAX_TEXTURES 8
+
 struct RDP {
     const uint8_t* palettes[2];
     // Original DRAM source address of the most recent TLUT load per palette half.
@@ -282,7 +285,7 @@ struct RDP {
         struct RawTexMetadata raw_tex_metadata;
         bool masked;
         bool blended;
-    } loaded_texture[2];
+    } loaded_texture[MAX_TMEM_TEXTURES];
     struct {
         uint8_t fmt;
         uint8_t siz;
@@ -293,8 +296,8 @@ struct RDP {
         uint32_t line_size_bytes;
         uint8_t palette;
         uint8_t tmem_index; // 0 or 1 for offset 0 kB or offset 2 kB, respectively
-    } texture_tile[8];
-    bool textures_changed[2];
+    } texture_tile[MAX_TEXTURES];
+    bool textures_changed[MAX_TMEM_TEXTURES];
 
     uint8_t first_tile_index;
     uint8_t level;
