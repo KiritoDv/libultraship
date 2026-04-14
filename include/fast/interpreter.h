@@ -9,6 +9,7 @@
 #include <vector>
 #include <stack>
 #include <string>
+#include <string_view>
 
 #include "fast/lus_gbi.h"
 #include "fast/types.h"
@@ -76,7 +77,7 @@ enum class ShaderOpts {
     TEXEL1_MASK,
     TEXEL0_BLEND,
     TEXEL1_BLEND,
-    USE_SHADER,
+    PRISM_SHADER, // 16-bit width
     MAX
 };
 
@@ -86,6 +87,7 @@ enum class ShaderOpts {
 struct ColorCombinerKey {
     uint64_t combine_mode;
     uint64_t options;
+    uint64_t shader_id;
 
 #ifdef __cplusplus
     auto operator<=>(const ColorCombinerKey&) const = default;
@@ -119,7 +121,7 @@ struct CCFeatures {
     int16_t shader_id;
 };
 
-void gfx_cc_get_features(uint64_t shader_id0, uint32_t shader_id1, struct CCFeatures* cc_features);
+void gfx_cc_get_features(uint64_t shader_id0, uint64_t shader_id1, struct CCFeatures* cc_features);
 
 union Gfx;
 
@@ -129,6 +131,10 @@ class GfxRenderingAPI;
 class GfxWindowBackend;
 
 constexpr size_t MAX_SEGMENT_POINTERS = 16;
+constexpr size_t SHADER_ID_SHIFT = 16;
+constexpr int16_t ShaderIdUnmask(int id) {
+    return (id >> SHADER_ID_SHIFT) & 0xFFFF;
+}
 
 struct GfxExecStack {
     // This is a dlist stack used to handle dlist calls.
@@ -218,12 +224,6 @@ struct RawTexMetadata {
     Fast::TextureType type;
 };
 
-struct ShaderMod {
-    bool enabled = false;
-    int16_t id;
-    uint8_t type;
-};
-
 #define MAX_LIGHTS 32
 #define MAX_VERTICES 64
 
@@ -252,11 +252,17 @@ struct RSP {
     } texture_scaling_factor;
 
     struct LoadedVertex loaded_vertices[MAX_VERTICES + 4];
-    ShaderMod current_shader;
 };
 
 struct RDP {
     const uint8_t* palettes[2];
+    // Original DRAM source address of the most recent TLUT load per palette half.
+    // Used in texture cache keys instead of palettes[] (which always points to staging).
+    const uint8_t* palette_dram_addr[2];
+    // CI4 palette staging buffer: N64 TMEM holds up to 16 CI4 palettes (16 entries x 2 bytes each = 32 bytes per
+    // palette). palettes[0] covers indices 0-7 (256 bytes), palettes[1] covers 8-15 (256 bytes). GfxDpLoadTlut copies
+    // TLUT data here at the correct offset so multi-palette CI4 models work.
+    uint8_t palette_staging[2][256];
     struct {
         const uint8_t* addr;
         uint8_t siz;
@@ -293,10 +299,9 @@ struct RDP {
     uint32_t other_mode_l, other_mode_h;
     uint64_t combine_mode;
     bool grayscale;
-    ShaderMod current_shader;
 
     uint8_t prim_lod_fraction;
-    struct RGBA env_color, prim_color, fog_color, fill_color, grayscale_color;
+    struct RGBA env_color, prim_color, fog_color, blend_color, fill_color, grayscale_color;
     struct XYWidthHeight viewport, scissor;
     bool viewport_or_scissor_changed;
     void* z_buf_address;
@@ -325,7 +330,7 @@ struct GfxTextureCache {
 
 struct ColorCombiner {
     uint64_t shader_id0;
-    uint32_t shader_id1;
+    uint64_t shader_id1;
     bool usedTextures[2];
     struct ShaderProgram* prg[16];
     uint8_t shader_input_mapping[2][7];
@@ -458,7 +463,6 @@ class Interpreter {
     float AdjXForAspectRatio(float x) const;
     void AdjustVIewportOrScissor(XYWidthHeight* area);
     void CalcAndSetViewport(const F3DVp_t* viewport);
-    int16_t CreateShader(const std::string& path);
 
     void SpReset();
     void* SegAddr(uintptr_t w1);
@@ -466,7 +470,7 @@ class Interpreter {
     static const char* CCMUXtoStr(uint32_t ccmux);
     static const char* ACMUXtoStr(uint32_t acmux);
     static void GenerateCC(ColorCombiner* comb, const ColorCombinerKey& key);
-    static std::string GetBaseTexturePath(const std::string& path);
+    static std::string_view GetBaseTexturePath(std::string_view path);
     static void NormalizeVector(float v[3]);
     static void TransposedMatrixMul(float res[3], const float a[3], const float b[4][4]);
     static void MatrixMul(float res[4][4], const float a[4][4], const float b[4][4]);
@@ -510,11 +514,15 @@ class Interpreter {
 
     std::set<std::pair<float, float>> mGetPixelDepthPending; // get_pixel_depth_pending;
     std::unordered_map<std::pair<float, float>, uint16_t, hash_pair_ff> mGetPixelDepthCached; // get_pixel_depth_cached;
-    std::map<std::string, MaskedTextureEntry> mMaskedTextures;
+    std::map<std::string, MaskedTextureEntry, std::less<>> mMaskedTextures;
 
     const std::unordered_map<Mtx*, MtxF>* mCurMtxReplacements;
     bool mMarkerOn; // This was originally a debug feature. Now it seems to control s2dex?
-    std::vector<std::string> shader_ids;
+    std::unordered_map<size_t, const char*> mShaders;
+
+    typedef size_t ShaderId;
+    std::stack<ShaderId> mShaderStack;
+    size_t mShadersIndex;
     int mInterpolationIndex;
     int mInterpolationIndexTarget;
 };
@@ -522,6 +530,7 @@ class Interpreter {
 void gfx_set_target_ucode(UcodeHandlers ucode);
 void gfx_push_current_dir(char* path);
 int32_t gfx_check_image_signature(const char* imgData);
+const char* gfx_get_shader(int16_t id);
 const char* GfxGetOpcodeName(int8_t opcode);
 
 } // namespace Fast

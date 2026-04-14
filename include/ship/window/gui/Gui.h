@@ -92,6 +92,7 @@ class Gui {
     ImTextureID GetTextureByName(const std::string& name);
     ImVec2 GetTextureSize(const std::string& name);
     void LoadTextureFromRawImage(const std::string& name, const std::string& path);
+    void LoadTextureFromResource(const std::string& name, std::shared_ptr<GuiTexture> texture);
 
     std::shared_ptr<GameOverlay> GetGameOverlay();
     void SetMenuBar(std::shared_ptr<GuiMenuBar> menuBar);
@@ -126,8 +127,6 @@ class Gui {
     int16_t GetIntegerScaleFactor();
     void CheckSaveCvars();
     void HandleMouseCapture();
-    void CursorTimeoutTick();
-    void SetCursorVisibilityTime(int32_t seconds);
     ImVec2 mTemporaryWindowPos;
     ImGuiIO* mImGuiIo;
     std::map<std::string, std::shared_ptr<GuiWindow>> mGuiWindows;
@@ -142,8 +141,6 @@ class Gui {
     std::shared_ptr<GuiMenuBar> mMenuBar;
     std::shared_ptr<GuiWindow> mMenu;
     std::unordered_map<std::string, GuiTextureMetadata> mGuiTextures;
-    uint32_t mCursorVisibleTicks = 180;
-    uint32_t mCursorVisibleSeconds = 3;
 };
 } // namespace Ship
 

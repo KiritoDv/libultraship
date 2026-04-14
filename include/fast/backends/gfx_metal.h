@@ -42,8 +42,8 @@ namespace NS {
 class AutoreleasePool;
 }
 
-static int cantor(uint64_t a, uint64_t b) {
-    return (a + b + 1.0) * (a + b) / 2 + b;
+static size_t cantor(uint64_t a, uint64_t b) {
+    return (a + b) * (a + b + 1) / 2 + b;
 }
 
 struct hash_pair_shader_ids {
@@ -58,7 +58,7 @@ namespace Fast {
 
 struct ShaderProgramMetal {
     uint64_t shader_id0;
-    uint32_t shader_id1;
+    uint64_t shader_id1;
 
     uint8_t numInputs;
     uint8_t numFloats;
@@ -74,6 +74,7 @@ struct TextureDataMetal {
     MTL::SamplerState* sampler;
     uint32_t width;
     uint32_t height;
+    uint32_t filtering;
     bool linear_filtering;
 };
 
@@ -110,6 +111,10 @@ struct FrameUniforms {
     simd::float1 noiseScale;
 };
 
+struct DrawUniforms {
+    simd::int1 textureFiltering[SHADER_MAX_TEXTURES];
+};
+
 struct CoordUniforms {
     simd::uint2 coords[MAX_PIXEL_DEPTH_COORDS];
 };
@@ -122,8 +127,8 @@ class GfxRenderingAPIMetal final : public GfxRenderingAPI {
     GfxClipParameters GetClipParameters() override;
     void UnloadShader(ShaderProgram* oldPrg) override;
     void LoadShader(ShaderProgram* newPrg) override;
-    ShaderProgram* CreateAndLoadNewShader(uint64_t shaderId0, uint32_t shaderId1) override;
-    ShaderProgram* LookupShader(uint64_t shaderId0, uint32_t shaderId1) override;
+    ShaderProgram* CreateAndLoadNewShader(uint64_t shaderId0, uint64_t shaderId1) override;
+    ShaderProgram* LookupShader(uint64_t shaderId0, uint64_t shaderId1) override;
     void ShaderGetInfo(ShaderProgram* prg, uint8_t* numInputs, bool usedTextures[2]) override;
     uint32_t NewTexture() override;
     void SelectTexture(int tile, uint32_t textureId) override;
@@ -183,6 +188,7 @@ class GfxRenderingAPIMetal final : public GfxRenderingAPI {
     std::vector<FramebufferMetal> mFramebuffers;
     FrameUniforms mFrameUniforms;
     CoordUniforms mCoordUniforms;
+    DrawUniforms mDrawUniforms;
     MTL::Buffer* mFrameUniformBuffer;
 
     uint32_t mMsaaNumQualityLevels[METAL_MAX_MULTISAMPLE_SAMPLE_COUNT];

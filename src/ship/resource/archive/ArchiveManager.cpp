@@ -155,9 +155,6 @@ bool ArchiveManager::WriteFile(std::shared_ptr<Archive> archive, const std::stri
     if (archive) {
         if (archive->WriteFile(filePath, data)) {
             auto hash = CRC64(filePath.c_str());
-            archive->Unload();
-            archive->Load();
-            AddArchive(archive);
             mHashes[hash] = filePath;
             mFileToArchive[hash] = archive;
             return true; // Successfully wrote file
@@ -297,6 +294,14 @@ std::shared_ptr<Archive> ArchiveManager::AddArchive(std::shared_ptr<Archive> arc
 
 bool ArchiveManager::IsGameVersionValid(uint32_t gameVersion) {
     return mValidGameVersions.empty() || mValidGameVersions.contains(gameVersion);
+}
+
+void ArchiveManager::SetUntrustedArchiveHandler(const UntrustedArchiveHandler& handler) {
+    mUntrustedArchiveHandler = handler;
+}
+
+UntrustedArchiveHandler ArchiveManager::GetUntrustedArchiveHandler() const {
+    return mUntrustedArchiveHandler;
 }
 
 } // namespace Ship

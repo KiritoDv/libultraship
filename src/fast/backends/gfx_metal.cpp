@@ -205,7 +205,7 @@ void GfxRenderingAPIMetal::LoadShader(struct ShaderProgram* new_prg) {
     mShaderProgram = (struct ShaderProgramMetal*)new_prg;
 }
 
-struct ShaderProgram* GfxRenderingAPIMetal::CreateAndLoadNewShader(uint64_t shader_id0, uint32_t shader_id1) {
+struct ShaderProgram* GfxRenderingAPIMetal::CreateAndLoadNewShader(uint64_t shader_id0, uint64_t shader_id1) {
     CCFeatures cc_features;
     gfx_cc_get_features(shader_id0, shader_id1, &cc_features);
 
@@ -293,7 +293,7 @@ struct ShaderProgram* GfxRenderingAPIMetal::CreateAndLoadNewShader(uint64_t shad
     return (struct ShaderProgram*)prg;
 }
 
-struct ShaderProgram* GfxRenderingAPIMetal::LookupShader(uint64_t shader_id0, uint32_t shader_id1) {
+struct ShaderProgram* GfxRenderingAPIMetal::LookupShader(uint64_t shader_id0, uint64_t shader_id1) {
     auto it = mShaderProgramPool.find(std::make_pair(shader_id0, shader_id1));
     return it == mShaderProgramPool.end() ? nullptr : (struct ShaderProgram*)&it->second;
 }
@@ -353,11 +353,14 @@ void GfxRenderingAPIMetal::UploadTexture(const uint8_t* rgba32_buf, uint32_t wid
 void GfxRenderingAPIMetal::SetSamplerParameters(int tile, bool linear_filter, uint32_t cms, uint32_t cmt) {
     TextureDataMetal* texture_data = &mTextures[mCurrentTextureIds[tile]];
     texture_data->linear_filtering = linear_filter;
+    texture_data->filtering = !linear_filter ? FILTER_LINEAR : FILTER_THREE_POINT;
 
     // This function is called twice per texture, the first one only to set default values.
     // Maybe that could be skipped? Anyway, make sure to release the first default sampler
     // state before setting the actual one.
-    texture_data->sampler->release();
+    if (texture_data->sampler != nullptr) {
+        texture_data->sampler->release();
+    }
 
     MTL::SamplerDescriptor* sampler_descriptor = MTL::SamplerDescriptor::alloc()->init();
     MTL::SamplerMinMagFilter filter = linear_filter && mCurrentFilterMode == FILTER_LINEAR
@@ -414,6 +417,7 @@ void GfxRenderingAPIMetal::SetUseAlpha(bool use_alpha) {
 
 void GfxRenderingAPIMetal::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, size_t buf_vbo_num_tris) {
     NS::AutoreleasePool* autorelease_pool = NS::AutoreleasePool::alloc()->init();
+    bool textures_changed = false;
 
     auto& current_framebuffer = mFramebuffers[mCurrentFramebuffer];
 
@@ -488,6 +492,16 @@ void GfxRenderingAPIMetal::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, si
                 }
             }
         }
+
+        if (mCurrentFilterMode == FILTER_THREE_POINT) {
+            mDrawUniforms.textureFiltering[i] = mTextures[mCurrentTextureIds[i]].filtering;
+            mDrawUniforms.textureFiltering[i] = mTextures[mCurrentTextureIds[i]].filtering;
+            textures_changed = true;
+        }
+    }
+
+    if (textures_changed) {
+        current_framebuffer.mCommandEncoder->setFragmentBytes(&mDrawUniforms, sizeof(DrawUniforms), 1);
     }
 
     if (current_framebuffer.mLastShaderProgram != mShaderProgram) {
@@ -766,7 +780,7 @@ void GfxRenderingAPIMetal::UpdateFramebufferParameters(int fb_id, uint32_t width
         }
     }
 
-    if (has_depth_buffer) {
+    if (has_depth_buffer && fb.mRenderPassDescriptor != nullptr) {
         if (msaa_level > 1) {
             fb.mRenderPassDescriptor->depthAttachment()->setTexture(fb.mMsaaDepthTexture);
             fb.mRenderPassDescriptor->depthAttachment()->setResolveTexture(fb.mDepthTexture);
@@ -779,7 +793,7 @@ void GfxRenderingAPIMetal::UpdateFramebufferParameters(int fb_id, uint32_t width
             fb.mRenderPassDescriptor->depthAttachment()->setStoreAction(MTL::StoreActionStore);
             fb.mRenderPassDescriptor->depthAttachment()->setClearDepth(1);
         }
-    } else {
+    } else if (fb.mRenderPassDescriptor != nullptr) {
         fb.mRenderPassDescriptor->setDepthAttachment(nullptr);
     }
 
@@ -797,7 +811,8 @@ void GfxRenderingAPIMetal::StartDrawToFramebuffer(int fb_id, float noise_scale) 
     mCurrentFramebuffer = fb_id;
     mDrawnFramebuffers.insert(fb_id);
 
-    if (fb.mRenderTarget && fb.mCommandBuffer == nullptr && fb.mCommandEncoder == nullptr) {
+    if (fb.mRenderTarget && fb.mCommandBuffer == nullptr && fb.mCommandEncoder == nullptr &&
+        fb.mRenderPassDescriptor != nullptr) {
         fb.mCommandBuffer = mCommandQueue->commandBuffer();
         std::string fbcb_label = fmt::format("FrameBuffer {} Command Buffer", fb_id);
         fb.mCommandBuffer->setLabel(NS::String::string(fbcb_label.c_str(), NS::UTF8StringEncoding));
@@ -946,8 +961,8 @@ GfxRenderingAPIMetal::GetPixelDepth(int fb_id, const std::set<std::pair<float, f
     // map coordinates to right y axis
     size_t i = 0;
     for (const auto& coord : coordinates) {
-        mCoordUniforms.coords[i].x = coord.first;
-        mCoordUniforms.coords[i].y = framebuffer.mDepthTexture->height() - 1 - coord.second;
+        mCoordUniforms.coords[i].x = (uint32_t)(int32_t)coord.first;
+        mCoordUniforms.coords[i].y = (uint32_t)(int32_t)(framebuffer.mDepthTexture->height() - 1 - coord.second);
         ++i;
     }
 

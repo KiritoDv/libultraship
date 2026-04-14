@@ -9,6 +9,9 @@
 #include "ship/controller/controldeck/ControlDeck.h"
 #include "ship/debug/CrashHandler.h"
 #include "ship/window/FileDropMgr.h"
+#include "ship/events/EventSystem.h"
+#include "ship/scripting/ScriptLoader.h"
+#include "ship/security/Keystore.h"
 
 #ifdef _WIN32
 #include <libloaderapi.h>
@@ -34,6 +37,10 @@ Context::~Context() {
     SPDLOG_TRACE("destruct context");
     GetWindow()->SaveWindowToConfig();
 
+    if (mScriptLoader) {
+        mScriptLoader->UnloadAll();
+    }
+
     // Explicitly destructing everything so that logging is done last.
     mAudio = nullptr;
     mWindow = nullptr;
@@ -42,6 +49,9 @@ Context::~Context() {
     mControlDeck = nullptr;
     mResourceManager = nullptr;
     mConsoleVariables = nullptr;
+    mEventSystem = nullptr;
+    mScriptLoader = nullptr;
+    mKeystore = nullptr;
     GetConfig()->Save();
     mConfig = nullptr;
     spdlog::shutdown();
@@ -91,7 +101,7 @@ bool Context::Init(const std::vector<std::string>& archivePaths, const std::unor
     return InitLogging() && InitConfiguration() && InitConsoleVariables() &&
            InitResourceManager(archivePaths, validHashes, reservedThreadCount) && InitControlDeck(controlDeck) &&
            InitCrashHandler() && InitConsole() && InitWindow(window) && InitAudio(audioSettings) && InitGfxDebugger() &&
-           InitFileDropMgr();
+           InitEventSystem() && InitFileDropMgr() && InitScriptLoader();
 }
 
 bool Context::InitLogging(spdlog::level::level_enum debugBuildLogLevel,
@@ -202,6 +212,8 @@ bool Context::InitResourceManager(const std::vector<std::string>& archivePaths,
     if (GetResourceManager() != nullptr) {
         return true;
     }
+
+    InitKeystore();
 
     mMainPath = GetConfig()->GetString("Game.Main Archive", GetAppDirectoryPath());
     mPatchesPath = GetConfig()->GetString("Game.Patches Archive", GetAppDirectoryPath() + "/mods");
@@ -339,6 +351,48 @@ bool Context::InitFileDropMgr() {
     return true;
 }
 
+bool Context::InitEventSystem() {
+    if (GetEventSystem() != nullptr) {
+        return true;
+    }
+
+    mEventSystem = std::make_shared<EventSystem>();
+    if (GetEventSystem() == nullptr) {
+        SPDLOG_ERROR("Failed to initialize event system");
+        return false;
+    }
+    return true;
+}
+
+bool Context::InitScriptLoader(std::unordered_map<std::string, std::string> compileDefines, int codeVersion,
+                               std::string buildOptions, std::vector<std::string> includePaths,
+                               std::vector<std::string> libraryPaths, std::vector<std::string> libraries) {
+    if (GetScriptLoader() != nullptr) {
+        return true;
+    }
+
+    mScriptLoader = std::make_shared<ScriptLoader>(compileDefines, codeVersion, buildOptions, includePaths,
+                                                   libraryPaths, libraries);
+    if (GetScriptLoader() == nullptr) {
+        SPDLOG_ERROR("Failed to initialize script system");
+        return false;
+    }
+    return true;
+}
+
+bool Context::InitKeystore() {
+    if (GetKeystore() != nullptr) {
+        return true;
+    }
+
+    mKeystore = std::make_shared<Keystore>();
+    if (GetKeystore() == nullptr) {
+        SPDLOG_ERROR("Failed to initialize keystore system");
+        return false;
+    }
+    return true;
+}
+
 std::shared_ptr<ConsoleVariable> Context::GetConsoleVariables() {
     return mConsoleVariables;
 }
@@ -381,6 +435,18 @@ std::shared_ptr<Fast::GfxDebugger> Context::GetGfxDebugger() {
 
 std::shared_ptr<FileDropMgr> Context::GetFileDropMgr() {
     return mFileDropMgr;
+}
+
+std::shared_ptr<EventSystem> Context::GetEventSystem() {
+    return mEventSystem;
+}
+
+std::shared_ptr<ScriptLoader> Context::GetScriptLoader() {
+    return mScriptLoader;
+}
+
+std::shared_ptr<Keystore> Context::GetKeystore() {
+    return mKeystore;
 }
 
 std::string Context::GetName() {

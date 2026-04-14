@@ -67,9 +67,13 @@ constexpr int8_t OTR_G_READFB = OPCODE(0x3e);
 constexpr int8_t OTR_G_REGBLENDEDTEX = OPCODE(0x3f);
 constexpr int8_t OTR_G_SETINTENSITY = OPCODE(0x40);
 constexpr int8_t OTR_G_MOVEMEM_HASH = OPCODE(0x42);
-constexpr int8_t OTR_G_LOAD_SHADER = OPCODE(0x43);
-constexpr int8_t RDP_G_SETTILESIZE_INTERP = OPCODE(0x44);
-constexpr int8_t RDP_G_SETTARGETINTERPINDEX = OPCODE(0x45);
+constexpr int8_t OTR_G_PUSH_SHADER = OPCODE(0x43);
+constexpr int8_t OTR_G_POP_SHADER = OPCODE(0x44);
+constexpr int8_t RDP_G_SETTILESIZE_INTERP = OPCODE(0x45);
+constexpr int8_t RDP_G_SETTARGETINTERPINDEX = OPCODE(0x46);
+constexpr int8_t RDP_G_LOADBLOCK_WIDE = OPCODE(0x47);
+constexpr int8_t RDP_G_VTX_WIDE = OPCODE(0x48);
+constexpr int8_t RDP_G_TRI1_WIDE = OPCODE(0x49);
 
 /*
  * The following commands are the "generated" RDP commands; the user
@@ -513,7 +517,7 @@ constexpr int8_t RDP_G_SETTARGETINTERPINDEX = OPCODE(0x45);
 #define G_BL_1 2
 #define G_BL_0 3
 
-#define GBL_c1(m1a, m1b, m2a, m2b) (m1a) << 30 | (m1b) << 26 | (m2a) << 22 | (m2b) << 18
+#define GBL_c1(m1a, m1b, m2a, m2b) (uint32_t)(m1a) << 30 | (m1b) << 26 | (m2a) << 22 | (m2b) << 18
 #define GBL_c2(m1a, m1b, m2a, m2b) (m1a) << 28 | (m1b) << 24 | (m2a) << 20 | (m2b) << 16
 
 #define RM_AA_ZB_OPA_SURF(clk)                                                  \
