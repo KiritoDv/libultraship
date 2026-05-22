@@ -163,7 +163,7 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(tinycc)
 if(NOT TARGET libtcc)
-    if(NOT EXISTS "${tinycc_SOURCE_DIR}/config.h")
+    if(NOT EXISTS "${tinycc_SOURCE_DIR}/config.h" AND NOT EXISTS "${tinycc_SOURCE_DIR}/win32/config.h")
         message(STATUS "Configuring TinyCC to generate config.h...")
         if(WIN32)
             execute_process(
@@ -218,7 +218,7 @@ if(NOT TARGET libtcc)
         )
     else()
         add_executable(tcc_c2str "${tinycc_SOURCE_DIR}/conftest.c")
-        target_compile_definitions(tcc_c2str PRIVATE C2STR)
+        target_compile_definitions(tcc_c2str PRIVATE C2STR $<$<BOOL:${MSVC}>:_CRT_SECURE_NO_WARNINGS>)
         target_include_directories(tcc_c2str PRIVATE "${tinycc_SOURCE_DIR}")
 
         if(APPLE)
@@ -242,7 +242,6 @@ if(NOT TARGET libtcc)
 
     # libtcc is LGPL; keep it as a shared library so consumers link against it
     # dynamically rather than incorporating it into their binary.
-    set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
     add_library(libtcc SHARED
         "${tinycc_SOURCE_DIR}/libtcc.c"
         "${tinycc_BINARY_DIR}/tccdefs_.h"
@@ -252,9 +251,10 @@ if(NOT TARGET libtcc)
         "${tinycc_SOURCE_DIR}/lib/libtcc1.c"
     )
     
-    target_include_directories(libtcc1 PRIVATE 
+    target_include_directories(libtcc1 PRIVATE
         "${tinycc_SOURCE_DIR}"
         "${tinycc_BINARY_DIR}"
+        $<$<BOOL:${WIN32}>:${tinycc_SOURCE_DIR}/win32>
     )
 
     if(MSVC)
@@ -281,10 +281,15 @@ if(NOT TARGET libtcc)
     target_include_directories(libtcc PRIVATE
         "${tinycc_SOURCE_DIR}"
         "${tinycc_BINARY_DIR}"
+        $<$<BOOL:${WIN32}>:${tinycc_SOURCE_DIR}/win32>
     )
     target_include_directories(libtcc PUBLIC
         $<BUILD_INTERFACE:${TCC_SAFE_INCLUDE_DIR}>
     )
+
+    if(WIN32)
+        set_target_properties(libtcc PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+    endif()
 
     if(ANDROID)
         target_link_libraries(libtcc PRIVATE dl m)
