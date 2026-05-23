@@ -157,7 +157,7 @@ if(ENABLE_SCRIPTING)
 
 FetchContent_Declare(
     tinycc
-    GIT_REPOSITORY https://github.com/TinyCC/tinycc.git
+    GIT_REPOSITORY https://github.com/Net64DD/tinycc.git
     GIT_TAG        mob
 )
 
@@ -240,8 +240,8 @@ if(NOT TARGET libtcc)
         )
     endif()
 
-    # libtcc is LGPL; keep it as a shared library so consumers link against it
-    # dynamically rather than incorporating it into their binary.
+    # libtcc is LGPL — keep it as a shared library so users can replace it
+    # without relinking the application (LGPL §6).
     add_library(libtcc SHARED
         "${tinycc_SOURCE_DIR}/libtcc.c"
         "${tinycc_BINARY_DIR}/tccdefs_.h"
@@ -260,10 +260,10 @@ if(NOT TARGET libtcc)
     if(MSVC)
         if(CMAKE_GENERATOR_PLATFORM MATCHES "ARM64" OR CMAKE_SYSTEM_PROCESSOR MATCHES "ARM64|aarch64")
             target_compile_definitions(libtcc1 PRIVATE __aarch64__ _WIN64)
-            target_compile_definitions(libtcc  PRIVATE __aarch64__ TCC_TARGET_ARM64 _WIN64)
+            target_compile_definitions(libtcc  PRIVATE __aarch64__ TCC_TARGET_ARM64 TCC_TARGET_PE _WIN64)
         else()
             target_compile_definitions(libtcc1 PRIVATE __x86_64__ _WIN64)
-            target_compile_definitions(libtcc  PRIVATE __x86_64__ TCC_TARGET_X86_64 _WIN64)
+            target_compile_definitions(libtcc  PRIVATE __x86_64__ TCC_TARGET_X86_64 TCC_TARGET_PE _WIN64)
         endif()
         target_compile_definitions(libtcc1 PRIVATE "__faststorefence=__faststorefence_tcc_unused")
         # MSVC's <assert.h> defines `__assert`, which collides with TCC's internal
@@ -289,6 +289,29 @@ if(NOT TARGET libtcc)
 
     if(WIN32)
         set_target_properties(libtcc PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+
+        # The GitHub TinyCC mirror omits the pre-built win32/tcc.exe that the
+        # official repo ships. Build it from source using the official batch
+        # script so SetupTccRuntime.cmake can use it for .def generation.
+        # cl.exe is guaranteed in PATH at build time (VS environment is active).
+        if(MSVC AND (NOT EXISTS "${tinycc_SOURCE_DIR}/win32/tcc.exe" OR NOT EXISTS "${tinycc_SOURCE_DIR}/win32/lib/libtcc1.a"))
+            add_custom_command(
+                OUTPUT
+                    "${tinycc_SOURCE_DIR}/win32/tcc.exe"
+                    "${tinycc_SOURCE_DIR}/win32/lib/libtcc1.a"
+                COMMAND cmd /c build-tcc.bat -c cl
+                WORKING_DIRECTORY "${tinycc_SOURCE_DIR}/win32"
+                DEPENDS
+                    "${tinycc_SOURCE_DIR}/tcc.c"
+                    "${tinycc_SOURCE_DIR}/libtcc.c"
+                COMMENT "Building tcc.exe and libtcc1.a via build-tcc.bat..."
+            )
+            add_custom_target(tcc_win32_exe
+                DEPENDS
+                    "${tinycc_SOURCE_DIR}/win32/tcc.exe"
+                    "${tinycc_SOURCE_DIR}/win32/lib/libtcc1.a"
+            )
+        endif()
     endif()
 
     if(ANDROID)

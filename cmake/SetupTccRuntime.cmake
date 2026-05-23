@@ -58,9 +58,15 @@ function(lus_setup_tcc_runtime TARGET_NAME)
             COMMAND ${CMAKE_COMMAND} -E make_directory "${_stage}/include/"
             COMMAND ${CMAKE_COMMAND} -E copy_directory "${tinycc_SOURCE_DIR}/include/"        "${_stage}/include/"
             COMMAND ${CMAKE_COMMAND} -E copy_directory "${tinycc_SOURCE_DIR}/win32/include/"  "${_stage}/include/"
-            COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:libtcc1>" "${_stage}/lib/$<TARGET_FILE_NAME:libtcc1>"
+            COMMAND ${CMAKE_COMMAND} -E copy "${tinycc_SOURCE_DIR}/win32/lib/libtcc1.a" "${_stage}/lib/libtcc1.a"
+            COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:libtcc>" "$<TARGET_FILE_DIR:${TARGET_NAME}>/$<TARGET_FILE_NAME:libtcc>"
             VERBATIM
         )
+
+        # Ensure tcc.exe is built before the POST_BUILD step that needs it.
+        if(TARGET tcc_win32_exe)
+            add_dependencies(${TARGET_NAME} tcc_win32_exe)
+        endif()
 
         # Generate a .def so mods can resolve host symbols at TCC link time.
         # Uses the pre-built bootstrapping tcc.exe that ships with TCC source.
@@ -82,8 +88,12 @@ function(lus_setup_tcc_runtime TARGET_NAME)
             DESTINATION "${LUS_TCC_RESOURCES_DIR}/include"
             COMPONENT ${TARGET_NAME}
         )
-        install(FILES "$<TARGET_FILE:libtcc1>"
+        install(FILES "${tinycc_SOURCE_DIR}/win32/lib/libtcc1.a"
             DESTINATION "${LUS_TCC_RESOURCES_DIR}/lib"
+            COMPONENT ${TARGET_NAME}
+        )
+        install(FILES "$<TARGET_FILE:libtcc>"
+            DESTINATION "."
             COMPONENT ${TARGET_NAME}
         )
         # .def is generated at build time; OPTIONAL so packaging doesn't
