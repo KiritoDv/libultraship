@@ -264,9 +264,10 @@ if(NOT TARGET libtcc)
             BUILD_RPATH "$<TARGET_FILE_DIR:libtcc>"
         )
 
+        find_program(GNU_MAKE_PROGRAM NAMES make gmake REQUIRED)
         add_custom_command(
             OUTPUT "${tinycc_SOURCE_DIR}/libtcc1.a"
-            COMMAND ${CMAKE_MAKE_PROGRAM} -C "${tinycc_SOURCE_DIR}/lib"
+            COMMAND ${GNU_MAKE_PROGRAM} -C "${tinycc_SOURCE_DIR}/lib"
             DEPENDS
                 tcc_native_bin
                 libtcc
