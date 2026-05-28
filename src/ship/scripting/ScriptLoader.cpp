@@ -185,8 +185,7 @@ void ScriptLoader::Compile(const std::shared_ptr<Archive>& archive) {
     if (info.Binaries.find(std::string(platform)) == info.Binaries.end() && !info.Main.empty()) {
         const auto cachePath = GetCachePath(info);
         if (!cachePath.empty() && std::filesystem::exists(cachePath)) {
-            SPDLOG_INFO("ScriptLoader: cache hit for '{}', skipping recompile ({})", info.Name,
-                        cachePath.string());
+            SPDLOG_INFO("ScriptLoader: cache hit for '{}', skipping recompile ({})", info.Name, cachePath.string());
             std::error_code ec;
             std::filesystem::copy_file(cachePath, temp, std::filesystem::copy_options::overwrite_existing, ec);
             if (!ec) {
