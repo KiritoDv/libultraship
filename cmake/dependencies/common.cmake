@@ -247,7 +247,7 @@ if(NOT TARGET libtcc)
         "${tinycc_BINARY_DIR}/tccdefs_.h"
     )
 
-    if(UNIX AND NOT ANDROID)
+    if(UNIX AND NOT ANDROID AND NOT APPLE)
         add_executable(tcc_native_bin "${tinycc_SOURCE_DIR}/tcc.c")
         target_compile_definitions(tcc_native_bin PRIVATE ONE_SOURCE=0)
         target_include_directories(tcc_native_bin PRIVATE
@@ -361,7 +361,7 @@ if(NOT TARGET libtcc)
     set_target_properties(libtcc PROPERTIES OUTPUT_NAME "tcc")
 
     if(APPLE)
-        set_target_properties(libtcc tcc_native_bin PROPERTIES
+        set_target_properties(libtcc libtcc1 PROPERTIES
             CODE_SIGNING_ALLOWED NO
             CODE_SIGNING_REQUIRED NO
             XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
