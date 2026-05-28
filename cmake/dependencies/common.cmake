@@ -247,28 +247,65 @@ if(NOT TARGET libtcc)
         "${tinycc_BINARY_DIR}/tccdefs_.h"
     )
 
-    add_library(libtcc1 STATIC
-        "${tinycc_SOURCE_DIR}/lib/libtcc1.c"
-    )
-    
-    target_include_directories(libtcc1 PRIVATE
-        "${tinycc_SOURCE_DIR}"
-        "${tinycc_BINARY_DIR}"
-        $<$<BOOL:${WIN32}>:${tinycc_SOURCE_DIR}/win32>
-    )
-
-    if(MSVC)
-        if(CMAKE_GENERATOR_PLATFORM MATCHES "ARM64" OR CMAKE_SYSTEM_PROCESSOR MATCHES "ARM64|aarch64")
-            target_compile_definitions(libtcc1 PRIVATE __aarch64__ _WIN64)
-            target_compile_definitions(libtcc  PRIVATE __aarch64__ TCC_TARGET_ARM64 TCC_TARGET_PE _WIN64)
-        else()
-            target_compile_definitions(libtcc1 PRIVATE __x86_64__ _WIN64)
-            target_compile_definitions(libtcc  PRIVATE __x86_64__ TCC_TARGET_X86_64 TCC_TARGET_PE _WIN64)
+    if(UNIX AND NOT ANDROID)
+        add_executable(tcc_native_bin "${tinycc_SOURCE_DIR}/tcc.c")
+        target_compile_definitions(tcc_native_bin PRIVATE ONE_SOURCE=0)
+        target_include_directories(tcc_native_bin PRIVATE
+            "${tinycc_SOURCE_DIR}"
+            "${tinycc_BINARY_DIR}"
+        )
+        target_link_libraries(tcc_native_bin PRIVATE libtcc)
+        if(NOT APPLE)
+            target_link_libraries(tcc_native_bin PRIVATE dl m pthread)
         endif()
-        target_compile_definitions(libtcc1 PRIVATE "__faststorefence=__faststorefence_tcc_unused")
-        # MSVC's <assert.h> defines `__assert`, which collides with TCC's internal
-        # `__assert` symbol. Rename TCC's use the same way `__faststorefence` is above.
-        target_compile_definitions(libtcc PRIVATE "__assert=__assert_tcc_unused")
+        set_target_properties(tcc_native_bin PROPERTIES
+            OUTPUT_NAME "tcc"
+            RUNTIME_OUTPUT_DIRECTORY "${tinycc_SOURCE_DIR}"
+            BUILD_RPATH "$<TARGET_FILE_DIR:libtcc>"
+        )
+
+        add_custom_command(
+            OUTPUT "${tinycc_SOURCE_DIR}/libtcc1.a"
+            COMMAND ${CMAKE_MAKE_PROGRAM} -C "${tinycc_SOURCE_DIR}/lib"
+            DEPENDS
+                tcc_native_bin
+                libtcc
+                "${tinycc_BINARY_DIR}/tccdefs_.h"
+            COMMENT "Building libtcc1.a via TinyCC Makefile..."
+            VERBATIM
+        )
+        add_custom_target(libtcc1_make_build
+            DEPENDS "${tinycc_SOURCE_DIR}/libtcc1.a"
+        )
+
+        add_library(libtcc1 STATIC IMPORTED GLOBAL)
+        set_target_properties(libtcc1 PROPERTIES
+            IMPORTED_LOCATION "${tinycc_SOURCE_DIR}/libtcc1.a"
+        )
+        add_dependencies(libtcc1 libtcc1_make_build)
+    else()
+        add_library(libtcc1 STATIC
+            "${tinycc_SOURCE_DIR}/lib/libtcc1.c"
+        )
+        target_include_directories(libtcc1 PRIVATE
+            "${tinycc_SOURCE_DIR}"
+            "${tinycc_BINARY_DIR}"
+            $<$<BOOL:${WIN32}>:${tinycc_SOURCE_DIR}/win32>
+        )
+        if(MSVC)
+            if(CMAKE_GENERATOR_PLATFORM MATCHES "ARM64" OR CMAKE_SYSTEM_PROCESSOR MATCHES "ARM64|aarch64")
+                target_compile_definitions(libtcc1 PRIVATE __aarch64__ _WIN64)
+                target_compile_definitions(libtcc  PRIVATE __aarch64__ TCC_TARGET_ARM64 TCC_TARGET_PE _WIN64)
+            else()
+                target_compile_definitions(libtcc1 PRIVATE __x86_64__ _WIN64)
+                target_compile_definitions(libtcc  PRIVATE __x86_64__ TCC_TARGET_X86_64 TCC_TARGET_PE _WIN64)
+            endif()
+            target_compile_definitions(libtcc1 PRIVATE "__faststorefence=__faststorefence_tcc_unused")
+            # MSVC's <assert.h> defines `__assert`, which collides with TCC's internal
+            # `__assert` symbol. Rename TCC's use the same way `__faststorefence` is above.
+            target_compile_definitions(libtcc PRIVATE "__assert=__assert_tcc_unused")
+        endif()
+        set_target_properties(libtcc1 PROPERTIES OUTPUT_NAME "tcc1")
     endif()
 
     set(TCC_SAFE_INCLUDE_DIR "${tinycc_BINARY_DIR}/safe_include")
@@ -320,11 +357,10 @@ if(NOT TARGET libtcc)
         target_link_libraries(libtcc PRIVATE dl m pthread)
     endif()
     
-    set_target_properties(libtcc  PROPERTIES OUTPUT_NAME "tcc")
-    set_target_properties(libtcc1 PROPERTIES OUTPUT_NAME "tcc1")
+    set_target_properties(libtcc PROPERTIES OUTPUT_NAME "tcc")
 
     if(APPLE)
-        set_target_properties(libtcc libtcc1 PROPERTIES
+        set_target_properties(libtcc tcc_native_bin PROPERTIES
             CODE_SIGNING_ALLOWED NO
             CODE_SIGNING_REQUIRED NO
             XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"

@@ -108,6 +108,10 @@ function(lus_setup_tcc_runtime TARGET_NAME)
     #  Unix (Linux + macOS)                                                #
     # ------------------------------------------------------------------ #
     elseif(UNIX)
+        if(TARGET libtcc1_make_build)
+            add_dependencies(${TARGET_NAME} libtcc1_make_build)
+        endif()
+
         add_custom_command(
             TARGET ${TARGET_NAME} POST_BUILD
             COMMENT "Staging TCC runtime headers and libs..."
