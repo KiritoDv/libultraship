@@ -111,6 +111,20 @@ function(lus_setup_tcc_runtime TARGET_NAME)
         if(TARGET libtcc1_make_build)
             add_dependencies(${TARGET_NAME} libtcc1_make_build)
         endif()
+        set(_tcc_crti "")
+        set(_tcc_crtn "")
+        foreach(_dir ${CMAKE_C_IMPLICIT_LINK_DIRECTORIES})
+            if(EXISTS "${_dir}/crti.o" AND NOT _tcc_crti)
+                set(_tcc_crti "${_dir}/crti.o")
+            endif()
+            if(EXISTS "${_dir}/crtn.o" AND NOT _tcc_crtn)
+                set(_tcc_crtn "${_dir}/crtn.o")
+            endif()
+        endforeach()
+
+        if(NOT _tcc_crti OR NOT _tcc_crtn)
+            message(WARNING "lus_setup_tcc_runtime: crti.o/crtn.o not found — mods may fail to compile on other distros")
+        endif()
 
         add_custom_command(
             TARGET ${TARGET_NAME} POST_BUILD
@@ -122,6 +136,14 @@ function(lus_setup_tcc_runtime TARGET_NAME)
             VERBATIM
         )
 
+        if(_tcc_crti)
+            add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy "${_tcc_crti}" "${_stage}/lib/crti.o"
+                COMMAND ${CMAKE_COMMAND} -E copy "${_tcc_crtn}" "${_stage}/lib/crtn.o"
+                VERBATIM
+            )
+        endif()
+
         # Install from source — never depends on staging having run.
         install(DIRECTORY "${tinycc_SOURCE_DIR}/include/"
             DESTINATION "${LUS_TCC_RESOURCES_DIR}/include"
@@ -131,5 +153,9 @@ function(lus_setup_tcc_runtime TARGET_NAME)
             DESTINATION "${LUS_TCC_RESOURCES_DIR}/lib"
             COMPONENT ${TARGET_NAME}
         )
+        if(_tcc_crti)
+            install(FILES "${_tcc_crti}" DESTINATION "${LUS_TCC_RESOURCES_DIR}/lib" RENAME "crti.o" COMPONENT ${TARGET_NAME})
+            install(FILES "${_tcc_crtn}" DESTINATION "${LUS_TCC_RESOURCES_DIR}/lib" RENAME "crtn.o" COMPONENT ${TARGET_NAME})
+        endif()
     endif()
 endfunction()
