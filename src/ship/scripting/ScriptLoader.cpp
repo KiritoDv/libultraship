@@ -234,7 +234,6 @@ void ScriptLoader::Compile(const std::shared_ptr<Archive>& archive) {
         }
 
         tcc_set_options(s, mBuildOptions.c_str());
-        tcc_set_output_type(s, TCC_OUTPUT_DLL);
 
         // Tell TCC where its own includes and libtcc1.a live.
         // We look for a library path whose parent has an "include" sibling
@@ -246,6 +245,8 @@ void ScriptLoader::Compile(const std::shared_ptr<Archive>& archive) {
                 break;
             }
         }
+    
+        tcc_set_output_type(s, TCC_OUTPUT_DLL);
 
         for (const std::string& includePath : mIncludePaths) {
             if (!std::filesystem::exists(includePath)) {
