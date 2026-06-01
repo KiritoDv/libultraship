@@ -216,12 +216,19 @@ void ScriptLoader::Compile(const std::shared_ptr<Archive>& archive) {
             throw std::runtime_error("Failed to create TCCState");
         }
 
-        tcc_set_error_func(s, nullptr, [](void* opaque, const char* msg) {
+        std::string errorLog;
+
+        tcc_set_error_func(s, &errorLog, [](void* opaque, const char* msg) {
             std::string_view sv(msg);
             if (sv.find("warning") != std::string_view::npos) {
                 SPDLOG_WARN("Compiler: {}", msg);
             } else if (sv.find("error") != std::string_view::npos || sv.find("fatal") != std::string_view::npos) {
                 SPDLOG_ERROR("Compiler: {}", msg);
+                auto* log = static_cast<std::string*>(opaque);
+                if (!log->empty()) {
+                    log->push_back('\n');
+                }
+                *log += msg;
             } else {
                 SPDLOG_INFO("Compiler: {}", msg);
             }
@@ -309,13 +316,13 @@ void ScriptLoader::Compile(const std::shared_ptr<Archive>& archive) {
             std::string sourceCode = lineFixer + std::string(buf->begin(), buf->end());
             if (tcc_compile_string(s, sourceCode.c_str()) == -1) {
                 tcc_delete(s);
-                throw std::runtime_error("TCC Error in " + safePath);
+                throw std::runtime_error(errorLog.empty() ? "TCC Error in " + safePath : errorLog);
             }
         }
 
         if (tcc_output_file(s, temp.c_str()) == -1) {
             tcc_delete(s);
-            throw std::runtime_error("Failed to output compiled code for " + temp);
+            throw std::runtime_error(errorLog.empty() ? "Failed to output compiled code for " + temp : errorLog);
         }
 
         StoreInCache(info, temp);
