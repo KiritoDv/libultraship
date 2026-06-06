@@ -37,7 +37,9 @@ std::shared_ptr<Context> Context::GetInstance() {
 
 Context::~Context() {
     SPDLOG_TRACE("destruct context");
-    GetWindow()->SaveWindowToConfig();
+    if (GetWindow() != nullptr) {
+        GetWindow()->SaveWindowToConfig();
+    }
 
     // Explicitly destructing everything so that logging is done last.
     mAudio = nullptr;
@@ -119,7 +121,9 @@ bool Context::InitLogging(spdlog::level::level_enum debugBuildLogLevel,
 
     try {
         // Setup Logging
+#ifndef __EMSCRIPTEN__
         spdlog::init_thread_pool(8192, 1);
+#endif
         std::vector<spdlog::sink_ptr> sinks;
 
 #if (!defined(_WIN32)) || defined(_DEBUG)
@@ -162,7 +166,8 @@ bool Context::InitLogging(spdlog::level::level_enum debugBuildLogLevel,
         auto logPath = GetPathRelativeToAppDirectory(("logs/" + GetName() + ".log"));
         auto fileSink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(logPath, 1024 * 1024 * 10, 10);
         sinks.push_back(fileSink);
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(__EMSCRIPTEN__)
+        // Emscripten: no pthreads, so async_logger/thread_pool are unavailable.
         mLogger = std::make_shared<spdlog::logger>("multi_sink", sinks.begin(), sinks.end());
         GetLogger()->set_level(debugBuildLogLevel);
         GetLogger()->flush_on(spdlog::level::trace);
@@ -557,6 +562,14 @@ std::string Context::GetAppDirectoryPath(const std::string& appName) {
         SDL_free(prefpath);
         return ret;
     }
+#endif
+
+#ifdef __EMSCRIPTEN__
+    // On the web all writable persistent storage lives in the IDBFS mount so
+    // that files survive page reloads via IndexedDB.  GetAppBundlePath() stays
+    // at "." (preloaded read-only assets), but the app-data directory (where
+    // extracted archives such as sm64.o2r are written) must be under IDBFS.
+    return "/idbfs";
 #endif
 
     return ".";
