@@ -100,6 +100,7 @@ class GfxRenderingAPIDX11 final : public GfxRenderingAPI {
     void SetCurrentPrimDepth(float depth) override;
     void SetCurrentMaxLod(float maxLod) override;
     void SetZmodeDecal(bool decal) override;
+    void SetStrictDecal(bool on) override;
     void SetViewport(int x, int y, int width, int height) override;
     void SetScissor(int x, int y, int width, int height) override;
     void SetUseAlpha(bool useAlpha) override;
