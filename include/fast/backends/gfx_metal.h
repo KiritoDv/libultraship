@@ -64,6 +64,8 @@ struct ShaderProgramMetal {
     uint8_t numInputs;
     uint8_t numFloats;
     bool usedTextures[SHADER_MAX_TEXTURES];
+    // Vertex shader consumes the LightUniforms buffer (lighting and/or texgen)
+    bool usedLighting = false;
     bool markedForDeletion = false;
 
     // hashed by msaa_level
@@ -123,6 +125,9 @@ struct DrawUniforms {
     simd::int1 textureFiltering[SHADER_MAX_TEXTURES];
     simd::float1 prim_depth;
     simd::float1 lod_max;
+    simd::float4 inputs[6];
+    simd::float4 fog_color;
+    simd::float4 grayscale_color;
 };
 
 struct CoordUniforms {
