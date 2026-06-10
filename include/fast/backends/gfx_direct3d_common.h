@@ -29,6 +29,9 @@ struct PerDrawCB {
     float combiner_inputs[6][4];
     float fog_color[4];
     float grayscale_color[4];
+    float uv_transform[2][4];
+    float texture_clamp[2][4];
+    float fog_params[4];
 };
 
 struct PerPrimDepthCB {
