@@ -133,6 +133,7 @@ struct DrawUniforms {
     simd::float4 texture_clamp[2];
     simd::float4 fog_params;
     simd::float4 palette_params[2];
+    simd::float4 lod_params;
 };
 
 struct CoordUniforms {
