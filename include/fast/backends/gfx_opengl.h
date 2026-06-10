@@ -54,6 +54,10 @@ struct ShaderProgram {
     GLint uv_transform_location;
     GLint tex_clamp_location;
     GLint fog_params_location;
+    GLint mtx_palette_location;
+    GLint y_scale_location;
+    GLint mv_cols_location;
+    GLint palette_params_location;
 };
 
 struct FramebufferOGL {
@@ -158,6 +162,7 @@ class GfxRenderingAPIOGL final : public GfxRenderingAPI {
     GLuint mPixelDepthRb = 0;
     GLuint mPixelDepthFb = 0;
     size_t mPixelDepthRbSize = 0;
+    bool mLastCullYFlipped = false;
 };
 
 } // namespace Fast

@@ -32,6 +32,7 @@ struct PerDrawCB {
     float uv_transform[2][4];
     float texture_clamp[2][4];
     float fog_params[4];
+    float palette_params[2][4];
 };
 
 struct PerPrimDepthCB {
@@ -157,6 +158,7 @@ class GfxRenderingAPIDX11 final : public GfxRenderingAPI {
     Microsoft::WRL::ComPtr<ID3D11Buffer> mPerDrawCb;
     Microsoft::WRL::ComPtr<ID3D11Buffer> mPerPrimDepthCb;
     Microsoft::WRL::ComPtr<ID3D11Buffer> mLightCb;
+    Microsoft::WRL::ComPtr<ID3D11Buffer> mTransformCb;
     Microsoft::WRL::ComPtr<ID3D11Buffer> mCoordBuffer;
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> mCoordBufferSrv;
     Microsoft::WRL::ComPtr<ID3D11Buffer> mDepthValueOutputBuffer;
