@@ -61,16 +61,29 @@ struct LightingUniforms {
     //            [1] = model-space direction coefficients + w = kc (linear atten);
     //            [2] = world-space position + w = kq (quadratic atten)
     float lights[GFX_MAX_GPU_LIGHTS][3][4];
-    float ambient[4];     // rgb ambient light (0..1)
-    float lookat_x[4];    // model-space lookat coefficients for texgen
+    float ambient[4];  // rgb ambient light (0..1)
+    float lookat_x[4]; // model-space lookat coefficients for texgen
     float lookat_y[4];
-    float texgen[2][4];   // per texture: (scaleS, offsetS, scaleT, offsetT)
-    float mv_rows[3][4];  // top modelview rows for point lighting transpose-multiply
+    float texgen[2][4];  // per texture: (scaleS, offsetS, scaleT, offsetT)
+    float mv_rows[3][4]; // top modelview rows for point lighting transpose-multiply
     // Modelview columns (incl. translation): world[j] = dot(vec4(obj,1), mv_cols[j]).
     // Used to derive the world-space position for point lighting in the VS.
     float mv_cols[3][4];
-    int32_t num_lights;   // excluding ambient
+    int32_t num_lights; // excluding ambient
     int32_t padding[3];
+};
+
+constexpr int GFX_NUM_CUSTOM_UNIFORMS = 16;
+
+// Game-bindable uniform register file, exposed to shader templates as
+// `uniform vec4 uCustom[GFX_NUM_CUSTOM_UNIFORMS]` (loose uniform on GL so the
+// GLSL version floor stays at 130; appended to the per-draw uniform block on
+// the other backends). Registers 0 and 1 are reserved for engine built-ins:
+//   [0] = (frame count, time seconds, delta seconds, 0)
+//   [1] = (fb width, fb height, 1/width, 1/height)
+// Games and custom/post shaders use registers 2..15.
+struct CustomUniforms {
+    float regs[GFX_NUM_CUSTOM_UNIFORMS][4];
 };
 
 // A hash function used to hash a: pair<float, float>
@@ -172,6 +185,13 @@ class GfxRenderingAPI {
             mTransformUniformsDirty = true;
         }
     }
+    // Custom uniform register file for the next DrawTriangles call.
+    virtual void SetCustomUniforms(const CustomUniforms& uniforms) {
+        if (memcmp(&uniforms, &mCustomUniforms, sizeof(CustomUniforms)) != 0) {
+            mCustomUniforms = uniforms;
+            mCustomUniformsDirty = true;
+        }
+    }
     // N64 backface culling, expressed as the sign of the RSP screen-space cross
     // product C = (v1-v2) x (v3-v2) computed in pre-y-flip clip space:
     //   keepSign = +1 keeps C > 0 (G_CULL_FRONT), -1 keeps C < 0 (G_CULL_BACK),
@@ -200,6 +220,8 @@ class GfxRenderingAPI {
     bool mLightingUniformsDirty = true;
     TransformUniforms mTransformUniforms = {};
     bool mTransformUniformsDirty = true;
+    CustomUniforms mCustomUniforms = {};
+    bool mCustomUniformsDirty = true;
     int8_t mCurrentCullKeepSign = 0;
     int8_t mLastCullKeepSign = -128; // forces initial apply
 };

@@ -91,6 +91,9 @@ void GfxRenderingAPIOGL::SetPerDrawUniforms() {
     if (mCurrentShaderProgram->lod_params_location >= 0) {
         glUniform4fv(mCurrentShaderProgram->lod_params_location, 1, mCombinerUniforms.lod_params);
     }
+    if (mCurrentShaderProgram->custom_location >= 0) {
+        glUniform4fv(mCurrentShaderProgram->custom_location, GFX_NUM_CUSTOM_UNIFORMS, &mCustomUniforms.regs[0][0]);
+    }
 
     // Vertex transform: matrix palette + y flip
     if (mCurrentShaderProgram->mtx_palette_location >= 0) {
@@ -319,6 +322,11 @@ std::optional<std::string> opengl_include_fs(const std::string& path) {
 std::string GfxRenderingAPIOGL::BuildFsShader(const CCFeatures& cc_features) {
     prism::Processor processor;
     prism::ContextItems mContext = {
+        { "BACKEND", "opengl" },
+        { "BACKEND_OPENGL", true },
+        { "BACKEND_VULKAN", false },
+        { "BACKEND_METAL", false },
+        { "BACKEND_DIRECTX", false },
         { "VERTEX_SHADER", false },
         { "o_c", M_ARRAY(cc_features.c, int, 2, 2, 4) },
         { "o_alpha", cc_features.opt_alpha },
@@ -431,7 +439,12 @@ static prism::ContextTypes* UpdateFloats(prism::ContextTypes* _, prism::ContextT
 static std::string BuildVsShader(const CCFeatures& cc_features) {
     numFloats = 4;
     prism::Processor processor;
-    prism::ContextItems mContext = { { "VERTEX_SHADER", true },
+    prism::ContextItems mContext = { { "BACKEND", "opengl" },
+                                     { "BACKEND_OPENGL", true },
+                                     { "BACKEND_VULKAN", false },
+                                     { "BACKEND_METAL", false },
+                                     { "BACKEND_DIRECTX", false },
+                                     { "VERTEX_SHADER", true },
                                      { "o_textures", M_ARRAY(cc_features.usedTextures, bool, 2) },
                                      { "o_clamp", M_ARRAY(cc_features.clamp, bool, 2, 2) },
                                      { "o_fog", cc_features.opt_fog },
@@ -607,6 +620,7 @@ ShaderProgram* GfxRenderingAPIOGL::CreateAndLoadNewShader(uint64_t shader_id0, u
     prg->mv_cols_location = glGetUniformLocation(shader_program, "uMvCols");
     prg->palette_params_location = glGetUniformLocation(shader_program, "uPaletteParams");
     prg->lod_params_location = glGetUniformLocation(shader_program, "uLodParams");
+    prg->custom_location = glGetUniformLocation(shader_program, "uCustom");
 
     LoadShader(prg);
 
@@ -738,10 +752,9 @@ void GfxRenderingAPIOGL::SetSamplerParameters(int tile, bool linear_filter, uint
     // Mip chains are sampled with explicit integer LODs (textureLod) in the shader;
     // MIPMAP_NEAREST picks the exact level while still filtering within it.
     const bool hasMips = textures[mCurrentTextureIds[tile]].mip_levels > 1;
-    const GLint minFilter =
-        hasMips ? (linear_filter && mCurrentFilterMode != FILTER_NONE ? GL_LINEAR_MIPMAP_NEAREST
-                                                                      : GL_NEAREST_MIPMAP_NEAREST)
-                : filter;
+    const GLint minFilter = hasMips ? (linear_filter && mCurrentFilterMode != FILTER_NONE ? GL_LINEAR_MIPMAP_NEAREST
+                                                                                          : GL_NEAREST_MIPMAP_NEAREST)
+                                    : filter;
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, minFilter);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
     textures[mCurrentTextureIds[tile]].filtering = !linear_filter ? FILTER_LINEAR : FILTER_THREE_POINT;
@@ -794,8 +807,7 @@ void GfxRenderingAPIOGL::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, size
     // to rasterizer winding via the VS y flip: signed area A = (yFlipped ? C : -C),
     // and GL's default front face is CCW (A > 0). keepSign > 0 keeps C > 0.
     const bool yFlipped = mTransformUniforms.y_scale[0] < 0.0f;
-    if (mCurrentCullKeepSign != mLastCullKeepSign ||
-        (mCurrentCullKeepSign != 0 && yFlipped != mLastCullYFlipped)) {
+    if (mCurrentCullKeepSign != mLastCullKeepSign || (mCurrentCullKeepSign != 0 && yFlipped != mLastCullYFlipped)) {
         mLastCullKeepSign = mCurrentCullKeepSign;
         mLastCullYFlipped = yFlipped;
         if (mCurrentCullKeepSign == 0) {

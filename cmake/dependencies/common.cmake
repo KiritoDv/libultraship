@@ -38,7 +38,10 @@ target_include_directories(ImGui PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/
 # ========= Vulkan (optional rendering backend) =============
 if (NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
     find_package(Vulkan QUIET)
-    find_library(SHADERC_SHARED_LIB NAMES shaderc_combined shaderc_shared shaderc HINTS /opt/homebrew/lib /usr/local/lib)
+    # Prefer the shared library: distro builds of the static shaderc_combined
+    # (e.g. Arch) do not actually bundle glslang/SPIRV-Tools, so linking it
+    # leaves their symbols undefined.
+    find_library(SHADERC_SHARED_LIB NAMES shaderc_shared shaderc shaderc_combined HINTS /opt/homebrew/lib /usr/local/lib)
     find_path(SHADERC_INCLUDE_DIR shaderc/shaderc.hpp HINTS /opt/homebrew/include /usr/local/include)
     if (Vulkan_FOUND AND SHADERC_SHARED_LIB AND SHADERC_INCLUDE_DIR)
         set(LUS_ENABLE_VULKAN ON CACHE INTERNAL "Vulkan backend available")

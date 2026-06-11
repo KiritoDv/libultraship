@@ -805,7 +805,7 @@ void GfxRenderingAPIDX11::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, siz
     }
 
     // Set per-draw constant buffer (texture metadata + combiner constants)
-    if (textures_changed || mCombinerUniformsDirty) {
+    if (textures_changed || mCombinerUniformsDirty || mCustomUniformsDirty) {
         memcpy(mPerDrawCbData.combiner_inputs, mCombinerUniforms.inputs, sizeof(mPerDrawCbData.combiner_inputs));
         memcpy(mPerDrawCbData.fog_color, mCombinerUniforms.fog_color, sizeof(mPerDrawCbData.fog_color));
         memcpy(mPerDrawCbData.grayscale_color, mCombinerUniforms.grayscale_color,
@@ -813,15 +813,16 @@ void GfxRenderingAPIDX11::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, siz
         memcpy(mPerDrawCbData.uv_transform, mCombinerUniforms.uv_transform, sizeof(mPerDrawCbData.uv_transform));
         memcpy(mPerDrawCbData.texture_clamp, mCombinerUniforms.texture_clamp, sizeof(mPerDrawCbData.texture_clamp));
         memcpy(mPerDrawCbData.fog_params, mCombinerUniforms.fog_params, sizeof(mPerDrawCbData.fog_params));
-        memcpy(mPerDrawCbData.palette_params, mCombinerUniforms.palette_params,
-               sizeof(mPerDrawCbData.palette_params));
+        memcpy(mPerDrawCbData.palette_params, mCombinerUniforms.palette_params, sizeof(mPerDrawCbData.palette_params));
         memcpy(mPerDrawCbData.lod_params, mCombinerUniforms.lod_params, sizeof(mPerDrawCbData.lod_params));
+        memcpy(mPerDrawCbData.uCustom, mCustomUniforms.regs, sizeof(mPerDrawCbData.uCustom));
         D3D11_MAPPED_SUBRESOURCE ms;
         ZeroMemory(&ms, sizeof(D3D11_MAPPED_SUBRESOURCE));
         mContext->Map(mPerDrawCb.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &ms);
         memcpy(ms.pData, &mPerDrawCbData, sizeof(PerDrawCB));
         mContext->Unmap(mPerDrawCb.Get(), 0);
         mCombinerUniformsDirty = false;
+        mCustomUniformsDirty = false;
     }
 
     // Lighting/texgen uniforms for the vertex shader
@@ -1501,6 +1502,11 @@ std::string gfx_direct3d_common_build_shader(size_t& numFloats, const CCFeatures
 
     prism::Processor processor;
     prism::ContextItems mContext = {
+        { "BACKEND", "directx" },
+        { "BACKEND_OPENGL", false },
+        { "BACKEND_VULKAN", false },
+        { "BACKEND_METAL", false },
+        { "BACKEND_DIRECTX", true },
         { "SHADER_0", SHADER_0 },
         { "SHADER_INPUT_1", SHADER_INPUT_1 },
         { "SHADER_INPUT_2", SHADER_INPUT_2 },

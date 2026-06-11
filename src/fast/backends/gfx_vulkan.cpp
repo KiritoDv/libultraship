@@ -38,19 +38,20 @@
 #include "ship/resource/factory/ShaderFactory.h"
 #include <sstream>
 
-#define VK_CHECK(expr)                                                   \
-    do {                                                                 \
-        VkResult _res = (expr);                                          \
-        if (_res != VK_SUCCESS) {                                        \
+#define VK_CHECK(expr)                                                          \
+    do {                                                                        \
+        VkResult _res = (expr);                                                 \
+        if (_res != VK_SUCCESS) {                                               \
             SPDLOG_ERROR("Vulkan error {} at {}: " #expr, (int)_res, __LINE__); \
-        }                                                                \
+        }                                                                       \
     } while (0)
 
 namespace Fast {
 
 // MARK: - Shader generation (prism -> Vulkan GLSL -> SPIR-V via shaderc)
 
-#define VK_RAND_NOISE "((random(vec3(floor(gl_FragCoord.xy * frameU.noise_scale), float(frameU.frame_count))) + 1.0) / 2.0)"
+#define VK_RAND_NOISE \
+    "((random(vec3(floor(gl_FragCoord.xy * frameU.noise_scale), float(frameU.frame_count))) + 1.0) / 2.0)"
 
 static const char* vk_shader_item_to_str(uint32_t item, bool with_alpha, bool only_alpha, bool inputs_have_alpha,
                                          bool first_cycle, bool hint_single_element) {
@@ -201,6 +202,11 @@ static std::optional<std::string> vulkan_include_fs(const std::string& path) {
 static std::string BuildVulkanShader(const CCFeatures& cc_features, bool vertex, bool threePoint, bool srgb) {
     prism::Processor processor;
     prism::ContextItems context = {
+        { "BACKEND", "vulkan" },
+        { "BACKEND_OPENGL", false },
+        { "BACKEND_VULKAN", true },
+        { "BACKEND_METAL", false },
+        { "BACKEND_DIRECTX", false },
         { "VERTEX_SHADER", vertex ? 1 : 0 },
         { "o_c", M_ARRAY(cc_features.c, int, 2, 2, 4) },
         { "o_alpha", cc_features.opt_alpha },
@@ -404,8 +410,8 @@ void GfxRenderingAPIVK::FullBarrier(VkCommandBuffer cmd) {
     VkMemoryBarrier barrier = { VK_STRUCTURE_TYPE_MEMORY_BARRIER };
     barrier.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
     barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 1, &barrier,
-                         0, nullptr, 0, nullptr);
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 1, &barrier, 0,
+                         nullptr, 0, nullptr);
 }
 
 VkCommandBuffer GfxRenderingAPIVK::BeginOneShot() {
@@ -933,7 +939,8 @@ bool GfxRenderingAPIVK::VulkanInit(SDL_Window* window) {
         CreateImage(1, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_FORMAT_R8G8B8A8_UNORM,
                     VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, mDummyTexture.image,
                     mDummyTexture.memory);
-        mDummyTexture.view = CreateImageView(mDummyTexture.image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT, 1);
+        mDummyTexture.view =
+            CreateImageView(mDummyTexture.image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT, 1);
         mDummyTexture.sampler = GetSampler(false, G_TX_WRAP, G_TX_WRAP);
 
         VkCommandBuffer cmd = BeginOneShot();
@@ -1048,8 +1055,7 @@ void GfxRenderingAPIVK::NewFrame() {
     // Swapchain housekeeping
     int dw = 0, dh = 0;
     SDL_Vulkan_GetDrawableSize(mWindow, &dw, &dh);
-    if (mSwapchainNeedsRecreate || (uint32_t)dw != mSwapchainExtent.width ||
-        (uint32_t)dh != mSwapchainExtent.height) {
+    if (mSwapchainNeedsRecreate || (uint32_t)dw != mSwapchainExtent.width || (uint32_t)dh != mSwapchainExtent.height) {
         CreateSwapchain((uint32_t)dw, (uint32_t)dh);
     }
 
@@ -1455,7 +1461,8 @@ VkPipeline GfxRenderingAPIVK::GetPipelineForState(ShaderProgramVK* prg, Framebuf
 
     VkPipelineRasterizationStateCreateInfo raster = { VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };
     raster.polygonMode = VK_POLYGON_MODE_FILL;
-    raster.cullMode = cullSel == 1 ? VK_CULL_MODE_FRONT_BIT : (cullSel == 2 ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE);
+    raster.cullMode =
+        cullSel == 1 ? VK_CULL_MODE_FRONT_BIT : (cullSel == 2 ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_NONE);
     raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     raster.lineWidth = 1.0f;
     raster.depthBiasEnable = depthBias ? VK_TRUE : VK_FALSE;
@@ -1472,8 +1479,8 @@ VkPipeline GfxRenderingAPIVK::GetPipelineForState(ShaderProgramVK* prg, Framebuf
     depth.depthCompareOp = compareOps[compareSel];
 
     VkPipelineColorBlendAttachmentState blendAttachment = {};
-    blendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT |
-                                     VK_COLOR_COMPONENT_A_BIT;
+    blendAttachment.colorWriteMask =
+        VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
     if (prg->useAlphaBlend) {
         blendAttachment.blendEnable = VK_TRUE;
         blendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
@@ -1550,23 +1557,24 @@ void GfxRenderingAPIVK::WriteDrawUniformsIfDirty() {
         }
     }
 
-    if (texturesChanged || mPrimDepthDirty || mLodMaxDirty || mCombinerUniformsDirty ||
+    if (texturesChanged || mPrimDepthDirty || mLodMaxDirty || mCombinerUniformsDirty || mCustomUniformsDirty ||
         mDrawUniformOffset == UINT32_MAX) {
         mDrawUniforms.misc[0] = mCurrentPrimDepth;
         mDrawUniforms.misc[1] = mCurrentMaxLod;
         memcpy(mDrawUniforms.inputs, mCombinerUniforms.inputs, sizeof(mDrawUniforms.inputs));
         memcpy(mDrawUniforms.fog_color, mCombinerUniforms.fog_color, sizeof(mDrawUniforms.fog_color));
-        memcpy(mDrawUniforms.grayscale_color, mCombinerUniforms.grayscale_color,
-               sizeof(mDrawUniforms.grayscale_color));
+        memcpy(mDrawUniforms.grayscale_color, mCombinerUniforms.grayscale_color, sizeof(mDrawUniforms.grayscale_color));
         memcpy(mDrawUniforms.uv_transform, mCombinerUniforms.uv_transform, sizeof(mDrawUniforms.uv_transform));
         memcpy(mDrawUniforms.texture_clamp, mCombinerUniforms.texture_clamp, sizeof(mDrawUniforms.texture_clamp));
         memcpy(mDrawUniforms.fog_params, mCombinerUniforms.fog_params, sizeof(mDrawUniforms.fog_params));
         memcpy(mDrawUniforms.palette_params, mCombinerUniforms.palette_params, sizeof(mDrawUniforms.palette_params));
         memcpy(mDrawUniforms.lod_params, mCombinerUniforms.lod_params, sizeof(mDrawUniforms.lod_params));
+        memcpy(mDrawUniforms.custom, mCustomUniforms.regs, sizeof(mDrawUniforms.custom));
         mDrawUniformOffset = pushBlock(&mDrawUniforms, sizeof(mDrawUniforms));
         mPrimDepthDirty = false;
         mLodMaxDirty = false;
         mCombinerUniformsDirty = false;
+        mCustomUniformsDirty = false;
     }
 
     if (mLightingUniformsDirty || mLightingUniformOffset == UINT32_MAX) {
@@ -1842,7 +1850,8 @@ void GfxRenderingAPIVK::ClearDepthRegion(int x, int y, int w, int h) {
     VkClearRect rect = { { { std::max(0, x), sy },
                            { (uint32_t)std::max(0, std::min(w, (int)fb.mWidth - x)),
                              (uint32_t)std::max(0, std::min(h, (int)fb.mHeight - sy)) } },
-                         0, 1 };
+                         0,
+                         1 };
     if (rect.rect.extent.width == 0 || rect.rect.extent.height == 0) {
         return;
     }
@@ -1980,8 +1989,8 @@ void GfxRenderingAPIVK::UpdateFramebufferParameters(int fbId, uint32_t width, ui
     }
 }
 
-void GfxRenderingAPIVK::CopyFramebuffer(int fbDstId, int fbSrcId, int srcX0, int srcY0, int srcX1, int srcY1,
-                                        int dstX0, int dstY0, int dstX1, int dstY1) {
+void GfxRenderingAPIVK::CopyFramebuffer(int fbDstId, int fbSrcId, int srcX0, int srcY0, int srcX1, int srcY1, int dstX0,
+                                        int dstY0, int dstX1, int dstY1) {
     if (fbSrcId >= (int)mFramebuffers.size() || fbDstId >= (int)mFramebuffers.size() || !mFrameActive) {
         return;
     }
@@ -2003,8 +2012,8 @@ void GfxRenderingAPIVK::CopyFramebuffer(int fbDstId, int fbSrcId, int srcX0, int
     blit.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
     blit.dstOffsets[0] = { dstX0, dstY0, 0 };
     blit.dstOffsets[1] = { dstX1, dstY1, 1 };
-    vkCmdBlitImage(src.mCommandBuffer, srcTex.image, VK_IMAGE_LAYOUT_GENERAL, dstTex.image, VK_IMAGE_LAYOUT_GENERAL,
-                   1, &blit, VK_FILTER_NEAREST);
+    vkCmdBlitImage(src.mCommandBuffer, srcTex.image, VK_IMAGE_LAYOUT_GENERAL, dstTex.image, VK_IMAGE_LAYOUT_GENERAL, 1,
+                   &blit, VK_FILTER_NEAREST);
     FullBarrier(src.mCommandBuffer);
 
     if (wasActive) {
@@ -2037,8 +2046,8 @@ void GfxRenderingAPIVK::ResolveMSAAColorBuffer(int fbIdTarget, int fbIdSrc) {
         copy.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
         copy.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
         copy.extent = { srcTex.width, srcTex.height, 1 };
-        vkCmdCopyImage(src.mCommandBuffer, srcTex.image, VK_IMAGE_LAYOUT_GENERAL, dstTex.image,
-                       VK_IMAGE_LAYOUT_GENERAL, 1, &copy);
+        vkCmdCopyImage(src.mCommandBuffer, srcTex.image, VK_IMAGE_LAYOUT_GENERAL, dstTex.image, VK_IMAGE_LAYOUT_GENERAL,
+                       1, &copy);
         FullBarrier(src.mCommandBuffer);
     } else {
         FramebufferVK& dst = mFramebuffers[0];
@@ -2049,8 +2058,8 @@ void GfxRenderingAPIVK::ResolveMSAAColorBuffer(int fbIdTarget, int fbIdSrc) {
         copy.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
         copy.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
         copy.extent = { srcTex.width, srcTex.height, 1 };
-        vkCmdCopyImage(dst.mCommandBuffer, srcTex.image, VK_IMAGE_LAYOUT_GENERAL, dstTex.image,
-                       VK_IMAGE_LAYOUT_GENERAL, 1, &copy);
+        vkCmdCopyImage(dst.mCommandBuffer, srcTex.image, VK_IMAGE_LAYOUT_GENERAL, dstTex.image, VK_IMAGE_LAYOUT_GENERAL,
+                       1, &copy);
         FullBarrier(dst.mCommandBuffer);
         RestartPass(dst);
     }
@@ -2115,8 +2124,8 @@ void GfxRenderingAPIVK::ReadFramebufferToCPU(int fbId, uint32_t width, uint32_t 
             vkFreeMemory(mDevice, mScreenReadbackMemory, nullptr);
         }
         CreateBuffer(needed, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                     mScreenReadbackBuffer, mScreenReadbackMemory, &mScreenReadbackMapped);
+                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, mScreenReadbackBuffer,
+                     mScreenReadbackMemory, &mScreenReadbackMapped);
         mScreenReadbackCapacity = needed;
     }
 
@@ -2173,8 +2182,8 @@ GfxRenderingAPIVK::GetPixelDepth(int fbId, const std::set<std::pair<float, float
             vkFreeMemory(mDevice, mScreenReadbackMemory, nullptr);
         }
         CreateBuffer(needed, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                     mScreenReadbackBuffer, mScreenReadbackMemory, &mScreenReadbackMapped);
+                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, mScreenReadbackBuffer,
+                     mScreenReadbackMemory, &mScreenReadbackMapped);
         mScreenReadbackCapacity = needed;
     }
 
@@ -2252,8 +2261,8 @@ void GfxRenderingAPIVK::EndFrame() {
         copy.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
         copy.imageExtent = { std::min(mScreenReadbackWidth, mSwapchainExtent.width),
                              std::min(mScreenReadbackHeight, mSwapchainExtent.height), 1 };
-        vkCmdCopyImageToBuffer(screen.mCommandBuffer, mSwapchainImages[mSwapchainImageIndex],
-                               VK_IMAGE_LAYOUT_GENERAL, mScreenReadbackBuffer, 1, &copy);
+        vkCmdCopyImageToBuffer(screen.mCommandBuffer, mSwapchainImages[mSwapchainImageIndex], VK_IMAGE_LAYOUT_GENERAL,
+                               mScreenReadbackBuffer, 1, &copy);
         mScreenReadbackRequested = false;
         mScreenReadbackDataReady = true;
     }

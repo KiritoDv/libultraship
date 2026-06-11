@@ -57,6 +57,9 @@ struct VulkanDrawUniforms {
     float fog_params[4];
     float palette_params[2][4];
     float lod_params[4];
+    // Game-bindable register file; must stay in lockstep with the DrawUniforms
+    // block in port/shaders/vulkan/default.shader.glsl
+    float custom[GFX_NUM_CUSTOM_UNIFORMS][4];
 };
 
 struct ShaderProgramVK {

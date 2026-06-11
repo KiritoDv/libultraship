@@ -594,13 +594,12 @@ void GfxRenderingAPIMetal::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, si
         }
     }
 
-    if (textures_changed || mPrimDepthDirty || mLodMaxDirty || mCombinerUniformsDirty) {
+    if (textures_changed || mPrimDepthDirty || mLodMaxDirty || mCombinerUniformsDirty || mCustomUniformsDirty) {
         mDrawUniforms.prim_depth = mCurrentPrimDepth;
         mDrawUniforms.lod_max = mCurrentMaxLod;
         for (int i = 0; i < 6; i++) {
-            mDrawUniforms.inputs[i] =
-                simd::float4{ mCombinerUniforms.inputs[i][0], mCombinerUniforms.inputs[i][1],
-                              mCombinerUniforms.inputs[i][2], mCombinerUniforms.inputs[i][3] };
+            mDrawUniforms.inputs[i] = simd::float4{ mCombinerUniforms.inputs[i][0], mCombinerUniforms.inputs[i][1],
+                                                    mCombinerUniforms.inputs[i][2], mCombinerUniforms.inputs[i][3] };
         }
         mDrawUniforms.fog_color = simd::float4{ mCombinerUniforms.fog_color[0], mCombinerUniforms.fog_color[1],
                                                 mCombinerUniforms.fog_color[2], mCombinerUniforms.fog_color[3] };
@@ -624,10 +623,15 @@ void GfxRenderingAPIMetal::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, si
         }
         mDrawUniforms.lod_params = simd::float4{ mCombinerUniforms.lod_params[0], mCombinerUniforms.lod_params[1],
                                                  mCombinerUniforms.lod_params[2], mCombinerUniforms.lod_params[3] };
+        for (int i = 0; i < GFX_NUM_CUSTOM_UNIFORMS; i++) {
+            mDrawUniforms.uCustom[i] = simd::float4{ mCustomUniforms.regs[i][0], mCustomUniforms.regs[i][1],
+                                                     mCustomUniforms.regs[i][2], mCustomUniforms.regs[i][3] };
+        }
         current_framebuffer.mCommandEncoder->setFragmentBytes(&mDrawUniforms, sizeof(DrawUniforms), 1);
         mPrimDepthDirty = false;
         mLodMaxDirty = false;
         mCombinerUniformsDirty = false;
+        mCustomUniformsDirty = false;
     }
 
     // The vertex shader reads the same DrawUniforms (UV transform, fog params);
@@ -640,9 +644,8 @@ void GfxRenderingAPIMetal::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, si
     // N64 backface culling: Metal NDC keeps y up and the front face is CCW; with
     // no VS y flip the signed area A = -C, so keeping C > 0 keeps clockwise
     // triangles, i.e. cull the front (CCW) faces.
-    MTL::CullMode cull = mCurrentCullKeepSign > 0
-                             ? MTL::CullModeFront
-                             : (mCurrentCullKeepSign < 0 ? MTL::CullModeBack : MTL::CullModeNone);
+    MTL::CullMode cull = mCurrentCullKeepSign > 0 ? MTL::CullModeFront
+                                                  : (mCurrentCullKeepSign < 0 ? MTL::CullModeBack : MTL::CullModeNone);
     current_framebuffer.mCommandEncoder->setCullMode(cull);
 
     if (current_framebuffer.mLastShaderProgram != mShaderProgram) {
