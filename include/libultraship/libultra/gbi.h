@@ -199,6 +199,7 @@
 #define G_SETTARGETINTERPINDEX 0x46
 #define G_INVAL_TEX_BY_PAL 0x4A
 #define G_SET_STRICT_DECAL 0x4B
+#define G_SETUNIFORM 0x4C
 
 /*
  * The following commands are the "generated" RDP commands; the user
@@ -2869,6 +2870,20 @@ typedef union Gfx {
 #define gsSPPushShader(shader)                                  \
     { (_SHIFTL(G_PUSH_SHADER, 24, 8)), (uintptr_t)(shader) }, { \
         0, 0                                                    \
+    }
+
+/* Writes custom uniform register `idx` (2..15; 0-1 are engine built-ins) from
+   four floats at `values`. The pointer is dereferenced at display-list
+   execution time, every time the DL runs. */
+#define gsSPSetUniform(idx, values) \
+    { (_SHIFTL(G_SETUNIFORM, 24, 8) | _SHIFTL((idx), 0, 8)), (uintptr_t)(values) }
+
+#define gSPSetUniform(pkt, idx, values)                                      \
+    {                                                                        \
+        Gfx* _g0 = (Gfx*)(pkt);                                              \
+                                                                             \
+        _g0->words.w0 = _SHIFTL(G_SETUNIFORM, 24, 8) | _SHIFTL((idx), 0, 8); \
+        _g0->words.w1 = (uintptr_t)(values);                                 \
     }
 
 #define gSPPushShader(pkt, shader)                     \
