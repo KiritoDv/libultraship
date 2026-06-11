@@ -9,6 +9,7 @@
 #include "fast/backends/gfx_dxgi.h"
 #include "fast/backends/gfx_opengl.h"
 #include "fast/backends/gfx_metal.h"
+#include "fast/backends/gfx_vulkan.h"
 #include "fast/backends/gfx_direct3d_common.h"
 #include "fast/backends/gfx_direct3d11.h"
 #include "fast/backends/gfx_window_manager_api.h"
@@ -34,6 +35,11 @@ Fast3dWindow::Fast3dWindow(std::shared_ptr<Ship::Gui> gui, std::shared_ptr<FastM
 #ifdef __APPLE__
     if (Metal_IsSupported()) {
         AddAvailableWindowBackend(WindowBackend::FAST3D_SDL_METAL);
+    }
+#endif
+#ifdef ENABLE_VULKAN
+    if (Vulkan_IsSupported()) {
+        AddAvailableWindowBackend(WindowBackend::FAST3D_SDL_VULKAN);
     }
 #endif
     AddAvailableWindowBackend(WindowBackend::FAST3D_SDL_OPENGL);
@@ -150,6 +156,12 @@ void Fast3dWindow::InitWindowManager() {
 #ifdef __APPLE__
         case WindowBackend::FAST3D_SDL_METAL:
             mRenderingApi = new GfxRenderingAPIMetal();
+            mWindowManagerApi = new GfxWindowBackendSDL2();
+            break;
+#endif
+#ifdef ENABLE_VULKAN
+        case WindowBackend::FAST3D_SDL_VULKAN:
+            mRenderingApi = new GfxRenderingAPIVK();
             mWindowManagerApi = new GfxWindowBackendSDL2();
             break;
 #endif
@@ -400,6 +412,8 @@ std::string Fast3dWindow::GetWindowBackendName() {
             return "OpenGL";
         case WindowBackend::FAST3D_SDL_METAL:
             return "Metal";
+        case WindowBackend::FAST3D_SDL_VULKAN:
+            return "Vulkan";
         default:
             return "";
     }

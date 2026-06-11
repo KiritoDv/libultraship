@@ -35,6 +35,24 @@ target_sources(ImGui
 
 target_include_directories(ImGui PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends PRIVATE ${SDL2_INCLUDE_DIRS})
 
+# ========= Vulkan (optional rendering backend) =============
+if (NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
+    find_package(Vulkan QUIET)
+    find_library(SHADERC_SHARED_LIB NAMES shaderc_shared HINTS /opt/homebrew/lib /usr/local/lib)
+    find_path(SHADERC_INCLUDE_DIR shaderc/shaderc.hpp HINTS /opt/homebrew/include /usr/local/include)
+    if (Vulkan_FOUND AND SHADERC_SHARED_LIB AND SHADERC_INCLUDE_DIR)
+        set(LUS_ENABLE_VULKAN ON CACHE INTERNAL "Vulkan backend available")
+        message(STATUS "Vulkan rendering backend enabled (shaderc: ${SHADERC_SHARED_LIB})")
+        target_sources(ImGui PRIVATE ${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp)
+        target_link_libraries(ImGui PUBLIC Vulkan::Vulkan)
+    else()
+        set(LUS_ENABLE_VULKAN OFF CACHE INTERNAL "Vulkan backend available")
+        message(STATUS "Vulkan rendering backend disabled (Vulkan: ${Vulkan_FOUND}, shaderc: ${SHADERC_SHARED_LIB})")
+    endif()
+else()
+    set(LUS_ENABLE_VULKAN OFF CACHE INTERNAL "Vulkan backend available")
+endif()
+
 # ========= StormLib =============
 if(INCLUDE_MPQ_SUPPORT)
     set(stormlib_patch_file ${CMAKE_CURRENT_SOURCE_DIR}/cmake/dependencies/patches/stormlib-optimizations.patch)

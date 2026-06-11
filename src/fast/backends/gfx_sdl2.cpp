@@ -26,10 +26,16 @@
 #include "SDL_opengl.h"
 #elif __APPLE__
 #include <SDL.h>
+#ifdef ENABLE_VULKAN
+#include <SDL_vulkan.h>
+#endif
 #include "fast/backends/gfx_metal.h"
 #include "ship/utils/macUtils.h"
 #else
 #include <SDL2/SDL.h>
+#ifdef ENABLE_VULKAN
+#include <SDL2/SDL_vulkan.h>
+#endif
 #define GL_GLEXT_PROTOTYPES 1
 #include <SDL2/SDL_opengles2.h>
 #endif
@@ -329,17 +335,22 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
 
     SDL_EventState(SDL_DROPFILE, SDL_ENABLE);
 
-#if defined(__APPLE__)
-    bool use_opengl = strcmp(gfxApiName, "OpenGL") == 0;
+#ifdef ENABLE_VULKAN
+    bool use_vulkan = strcmp(gfxApiName, "Vulkan") == 0;
 #else
-    constexpr bool use_opengl = true;
+    constexpr bool use_vulkan = false;
+#endif
+#if defined(__APPLE__)
+    bool use_opengl = !use_vulkan && strcmp(gfxApiName, "OpenGL") == 0;
+#else
+    bool use_opengl = !use_vulkan;
 #endif
 
     if (use_opengl) {
         SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
         SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
         SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    } else {
+    } else if (!use_vulkan) {
         SDL_SetHint(SDL_HINT_RENDER_DRIVER, "metal");
     }
 
@@ -379,6 +390,8 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
 
     if (use_opengl) {
         flags = flags | SDL_WINDOW_OPENGL;
+    } else if (use_vulkan) {
+        flags = flags | SDL_WINDOW_VULKAN;
     } else {
         flags = flags | SDL_WINDOW_METAL;
     }
@@ -415,6 +428,14 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
         SDL_GL_SetSwapInterval(mVsyncEnabled ? 1 : 0);
 
         window_impl.Opengl = { mWnd, mCtx };
+    } else if (use_vulkan) {
+#ifdef ENABLE_VULKAN
+        if (startFullScreen) {
+            SetFullscreenImpl(true, false);
+        }
+        SDL_Vulkan_GetDrawableSize(mWnd, &mWindowWidth, &mWindowHeight);
+        window_impl.Vulkan = { mWnd };
+#endif
     } else {
         uint32_t flags = SDL_RENDERER_ACCELERATED;
         if (mVsyncEnabled) {
