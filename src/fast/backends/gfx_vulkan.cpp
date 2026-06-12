@@ -192,7 +192,7 @@ static std::optional<std::string> vulkan_include_fs(const std::string& path) {
     init->ByteOrder = Ship::Endianness::Native;
     init->Format = RESOURCE_FORMAT_BINARY;
     auto res = std::static_pointer_cast<Ship::Shader>(
-        Ship::Context::GetInstance()->GetResourceManager()->LoadResource(path, true, init));
+        Ship::Context::GetInstance()->GetResourceManager()->LoadResource(path, false, init));
     if (res == nullptr) {
         return std::nullopt;
     }
@@ -272,7 +272,7 @@ static std::string BuildVulkanShader(const CCFeatures& cc_features, bool vertex,
     }
 
     auto res = std::static_pointer_cast<Ship::Shader>(
-        Ship::Context::GetInstance()->GetResourceManager()->LoadResource(path, true, init));
+        Ship::Context::GetInstance()->GetResourceManager()->LoadResource(path, false, init));
     if (res == nullptr) {
         SPDLOG_ERROR("Failed to load the Vulkan shader template, missing shaders/vulkan in the o2r?");
         abort();
