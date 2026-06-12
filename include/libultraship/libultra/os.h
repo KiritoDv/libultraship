@@ -110,7 +110,7 @@ API_EXPORT void osInvalICache(void* p, int32_t x);
 API_EXPORT void osWritebackDCache(void* p, int32_t x);
 
 API_EXPORT s32 osPiStartDma(OSIoMesg* mb, s32 priority, s32 direction, uintptr_t devAddr, void* vAddr, size_t nbytes,
-                 OSMesgQueue* mq);
+                            OSMesgQueue* mq);
 API_EXPORT void osViSwapBuffer(void*);
 API_EXPORT void osViBlack(uint8_t active);
 API_EXPORT void osViFade(u8, u16);

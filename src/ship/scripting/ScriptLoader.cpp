@@ -252,7 +252,7 @@ void ScriptLoader::Compile(const std::shared_ptr<Archive>& archive) {
                 break;
             }
         }
-    
+
         tcc_set_output_type(s, TCC_OUTPUT_DLL);
 
         for (const std::string& includePath : mIncludePaths) {

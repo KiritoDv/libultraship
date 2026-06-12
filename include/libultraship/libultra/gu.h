@@ -57,14 +57,14 @@ extern "C" {
  */
 
 API_EXPORT int guLoadTextureBlockMipMap(Gfx** glist, unsigned char* tbuf, Image* im, unsigned char startTile,
-                                    unsigned char pal, unsigned char cms, unsigned char cmt, unsigned char masks,
-                                    unsigned char maskt, unsigned char shifts, unsigned char shiftt, unsigned char cfs,
-                                    unsigned char cft);
+                                        unsigned char pal, unsigned char cms, unsigned char cmt, unsigned char masks,
+                                        unsigned char maskt, unsigned char shifts, unsigned char shiftt,
+                                        unsigned char cfs, unsigned char cft);
 
 API_EXPORT int guGetDPLoadTextureTileSz(int ult, int lrt);
 API_EXPORT void guDPLoadTextureTile(Gfx* glistp, void* timg, int texl_fmt, int texl_size, int img_width, int img_height,
-                                int uls, int ult, int lrs, int lrt, int palette, int cms, int cmt, int masks, int maskt,
-                                int shifts, int shiftt);
+                                    int uls, int ult, int lrs, int lrt, int palette, int cms, int cmt, int masks,
+                                    int maskt, int shifts, int shiftt);
 
 /*
  * matrix operations:
@@ -81,25 +81,25 @@ API_EXPORT void guFrustum(Mtx* m, float l, float r, float b, float t, float n, f
 API_EXPORT void guFrustumF(float mf[4][4], float l, float r, float b, float t, float n, float f, float scale);
 API_EXPORT void guPerspective(Mtx* m, u16* perspNorm, float fovy, float aspect, float near, float far, float scale);
 API_EXPORT void guPerspectiveF(float mf[4][4], u16* perspNorm, float fovy, float aspect, float near, float far,
-                           float scale);
-API_EXPORT void guLookAt(Mtx* m, float xEye, float yEye, float zEye, float xAt, float yAt, float zAt, float xUp, float yUp,
-                     float zUp);
-API_EXPORT void guLookAtF(float mf[4][4], float xEye, float yEye, float zEye, float xAt, float yAt, float zAt, float xUp,
-                      float yUp, float zUp);
+                               float scale);
+API_EXPORT void guLookAt(Mtx* m, float xEye, float yEye, float zEye, float xAt, float yAt, float zAt, float xUp,
+                         float yUp, float zUp);
+API_EXPORT void guLookAtF(float mf[4][4], float xEye, float yEye, float zEye, float xAt, float yAt, float zAt,
+                          float xUp, float yUp, float zUp);
 API_EXPORT void guLookAtReflect(Mtx* m, LookAt* l, float xEye, float yEye, float zEye, float xAt, float yAt, float zAt,
-                            float xUp, float yUp, float zUp);
+                                float xUp, float yUp, float zUp);
 API_EXPORT void guLookAtReflectF(float mf[4][4], LookAt* l, float xEye, float yEye, float zEye, float xAt, float yAt,
-                             float zAt, float xUp, float yUp, float zUp);
+                                 float zAt, float xUp, float yUp, float zUp);
 API_EXPORT void guLookAtHilite(Mtx* m, LookAt* l, Hilite* h, float xEye, float yEye, float zEye, float xAt, float yAt,
-                           float zAt, float xUp, float yUp, float zUp, float xl1, float yl1, float zl1, float xl2,
-                           float yl2, float zl2, int twidth, int theight);
+                               float zAt, float xUp, float yUp, float zUp, float xl1, float yl1, float zl1, float xl2,
+                               float yl2, float zl2, int twidth, int theight);
 API_EXPORT void guLookAtHiliteF(float mf[4][4], LookAt* l, Hilite* h, float xEye, float yEye, float zEye, float xAt,
-                            float yAt, float zAt, float xUp, float yUp, float zUp, float xl1, float yl1, float zl1,
-                            float xl2, float yl2, float zl2, int twidth, int theight);
+                                float yAt, float zAt, float xUp, float yUp, float zUp, float xl1, float yl1, float zl1,
+                                float xl2, float yl2, float zl2, int twidth, int theight);
 API_EXPORT void guLookAtStereo(Mtx* m, float xEye, float yEye, float zEye, float xAt, float yAt, float zAt, float xUp,
-                           float yUp, float zUp, float eyedist);
+                               float yUp, float zUp, float eyedist);
 API_EXPORT void guLookAtStereoF(float mf[4][4], float xEye, float yEye, float zEye, float xAt, float yAt, float zAt,
-                            float xUp, float yUp, float zUp, float eyedist);
+                                float xUp, float yUp, float zUp, float eyedist);
 API_EXPORT void guRotate(Mtx* m, float a, float x, float y, float z);
 API_EXPORT void guRotateF(float mf[4][4], float a, float x, float y, float z);
 API_EXPORT void guRotateRPY(Mtx* m, float r, float p, float y);
@@ -125,8 +125,8 @@ API_EXPORT void guNormalize(float* x, float* y, float* z);
 /* light utilities: */
 API_EXPORT void guPosLight(PositionalLight* pl, Light* l, float xOb, float yOb, float zOb);
 API_EXPORT void guPosLightHilite(PositionalLight* pl1, PositionalLight* pl2, Light* l1, Light* l2, LookAt* l, Hilite* h,
-                      float xEye, float yEye, float zEye, float xOb, float yOb, float zOb, float xUp, float yUp,
-                      float zUp, int twidth, int theight);
+                                 float xEye, float yEye, float zEye, float xOb, float yOb, float zOb, float xUp,
+                                 float yUp, float zUp, int twidth, int theight);
 API_EXPORT int guRandom(void);
 
 /*
@@ -163,7 +163,7 @@ API_EXPORT void guParseString(char* StringPointer, u64 nbytes);
 #define GU_BLINKRDP_EXTRACT 2
 
 API_EXPORT void guBlinkRdpDL(u64* rdp_dl_in, u64 nbytes_in, u64* rdp_dl_out, u64* nbytes_out, u32 x, u32 y, u32 radius,
-                         u8 red, u8 green, u8 blue, u8 flags);
+                             u8 red, u8 green, u8 blue, u8 flags);
 
 /* flag values for guParseGbiDL() */
 #define GU_PARSEGBI_ROWMAJOR 1
@@ -193,9 +193,9 @@ typedef struct {
     u32 paddr;
 } guDLPrintCB;
 
-API_EXPORT void guSprite2DInit(uSprite* SpritePointer, void* SourceImagePointer, void* TlutPointer, int Stride, int SubImageWidth,
-                    int SubImageHeight, int SourceImageType, int SourceImageBitSize, int SourceImageOffsetS,
-                    int SourceImageOffsetT);
+API_EXPORT void guSprite2DInit(uSprite* SpritePointer, void* SourceImagePointer, void* TlutPointer, int Stride,
+                               int SubImageWidth, int SubImageHeight, int SourceImageType, int SourceImageBitSize,
+                               int SourceImageOffsetS, int SourceImageOffsetT);
 
 #ifdef __cplusplus
 }
