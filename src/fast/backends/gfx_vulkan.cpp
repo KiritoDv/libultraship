@@ -259,6 +259,14 @@ static std::string BuildVulkanShader(const CCFeatures& cc_features, bool vertex,
         { "SHADER_NOISE", SHADER_NOISE },
         { "append_formula", (InvokeFunc)vk_append_formula },
     };
+    // Inject current values for @setting-declared tweakables (compile-time)
+    for (const auto& sv : Fast::gfx_get_shader_setting_values(cc_features.shader_id)) {
+        if (sv.isToggle) {
+            context[sv.var] = prism::ContextTypes{ (int)(sv.value != 0.0f) };
+        } else {
+            context[sv.var] = prism::ContextTypes{ prism::format_float_literal(sv.value) };
+        }
+    }
     processor.populate(context);
 
     auto init = std::make_shared<Ship::ResourceInitData>();
@@ -280,7 +288,9 @@ static std::string BuildVulkanShader(const CCFeatures& cc_features, bool vertex,
 
     processor.load(*static_cast<std::string*>(res->GetRawPointer()));
     processor.bind_include_loader(vulkan_include_fs);
-    return processor.process();
+    std::string result = processor.process();
+    Fast::gfx_register_shader_settings(cc_features.shader_id, processor.settings());
+    return result;
 }
 
 static std::vector<uint32_t> CompileGlslToSpirv(const std::string& source, bool vertex) {
