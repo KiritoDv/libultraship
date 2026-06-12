@@ -260,12 +260,8 @@ static std::string BuildVulkanShader(const CCFeatures& cc_features, bool vertex,
         { "append_formula", (InvokeFunc)vk_append_formula },
     };
     // Inject current values for @setting-declared tweakables (compile-time)
-    for (const auto& sv : Fast::gfx_get_shader_setting_values(cc_features.shader_id)) {
-        if (sv.isToggle) {
-            context[sv.var] = prism::ContextTypes{ (int)(sv.value != 0.0f) };
-        } else {
-            context[sv.var] = prism::ContextTypes{ prism::format_float_literal(sv.value) };
-        }
+    for (const auto& [var, value] : Fast::gfx_get_shader_setting_values(cc_features.shader_id)) {
+        context[var] = value;
     }
     processor.populate(context);
 
