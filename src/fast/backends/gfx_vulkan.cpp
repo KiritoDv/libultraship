@@ -833,6 +833,8 @@ bool GfxRenderingAPIVK::VulkanInit(SDL_Window* window) {
     vkGetPhysicalDeviceFeatures(mPhysicalDevice, &supported);
     VkPhysicalDeviceFeatures features = {};
     features.sampleRateShading = supported.sampleRateShading;
+    features.depthClamp = supported.depthClamp;
+    mHasDepthClamp = supported.depthClamp;
 
     VkDeviceCreateInfo dci = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
     dci.queueCreateInfoCount = 1;
@@ -1473,7 +1475,7 @@ VkPipeline GfxRenderingAPIVK::GetPipelineForState(ShaderProgramVK* prg, Framebuf
     raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     raster.lineWidth = 1.0f;
     raster.depthBiasEnable = depthBias ? VK_TRUE : VK_FALSE;
-    raster.depthClampEnable = VK_FALSE;
+    raster.depthClampEnable = mHasDepthClamp ? VK_TRUE : VK_FALSE;
 
     VkPipelineMultisampleStateCreateInfo msaa = { VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO };
     msaa.rasterizationSamples = (VkSampleCountFlagBits)fb.mMsaaLevel;
