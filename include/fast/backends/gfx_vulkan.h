@@ -266,6 +266,7 @@ class GfxRenderingAPIVK final : public GfxRenderingAPI {
     VkQueue mQueue = VK_NULL_HANDLE;
     VkPhysicalDeviceProperties mDeviceProps = {};
     bool mHasMirrorClampToEdge = false;
+    bool mHasDepthClamp = false;
 
     VkSwapchainKHR mSwapchain = VK_NULL_HANDLE;
     VkFormat mSwapchainFormat = VK_FORMAT_B8G8R8A8_UNORM;
