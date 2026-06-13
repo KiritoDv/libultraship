@@ -35,22 +35,66 @@ target_sources(ImGui
 
 target_include_directories(ImGui PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends PRIVATE ${SDL2_INCLUDE_DIRS})
 
-# ========= Vulkan (optional rendering backend) =============
+# ========= Vulkan =============
 if (NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
+    list(INSERT CMAKE_MODULE_PATH 0 "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+
+    if(WIN32 AND NOT DEFINED ENV{VULKAN_SDK} AND EXISTS "C:/VulkanSDK")
+        file(GLOB _lus_sdk_dirs LIST_DIRECTORIES true "C:/VulkanSDK/*")
+        list(SORT _lus_sdk_dirs ORDER DESCENDING)
+        foreach(_d IN LISTS _lus_sdk_dirs)
+            if(IS_DIRECTORY "${_d}")
+                set(ENV{VULKAN_SDK} "${_d}")
+                message(STATUS "Auto-detected Vulkan SDK: ${_d}")
+                break()
+            endif()
+        endforeach()
+    endif()
+
     find_package(Vulkan QUIET)
-    # Prefer the shared library: distro builds of the static shaderc_combined
-    # (e.g. Arch) do not actually bundle glslang/SPIRV-Tools, so linking it
-    # leaves their symbols undefined.
-    find_library(SHADERC_SHARED_LIB NAMES shaderc_shared shaderc shaderc_combined HINTS /opt/homebrew/lib /usr/local/lib)
-    find_path(SHADERC_INCLUDE_DIR shaderc/shaderc.hpp HINTS /opt/homebrew/include /usr/local/include)
-    if (Vulkan_FOUND AND SHADERC_SHARED_LIB AND SHADERC_INCLUDE_DIR)
+
+    if(Vulkan_FOUND)
         set(LUS_ENABLE_VULKAN ON CACHE INTERNAL "Vulkan backend available")
-        message(STATUS "Vulkan rendering backend enabled (shaderc: ${SHADERC_SHARED_LIB})")
         target_sources(ImGui PRIVATE ${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp)
         target_link_libraries(ImGui PUBLIC Vulkan::Vulkan)
+
+        if(WIN32 AND DEFINED ENV{VULKAN_SDK})
+            find_library(Vulkan_shaderc_shared_LIBRARY   NAMES shaderc_shared   HINTS "$ENV{VULKAN_SDK}/Lib" NO_DEFAULT_PATH)
+            find_library(Vulkan_shaderc_shared_DEBUG_LIB NAMES shaderc_sharedd  HINTS "$ENV{VULKAN_SDK}/Lib" NO_DEFAULT_PATH)
+            find_file(Vulkan_shaderc_shared_DLL       NAMES shaderc_shared.dll  HINTS "$ENV{VULKAN_SDK}/Bin" NO_DEFAULT_PATH)
+            find_file(Vulkan_shaderc_shared_DEBUG_DLL NAMES shaderc_sharedd.dll HINTS "$ENV{VULKAN_SDK}/Bin" NO_DEFAULT_PATH)
+
+            if(Vulkan_shaderc_shared_LIBRARY AND Vulkan_shaderc_shared_DLL)
+                add_library(Vulkan::shaderc_shared SHARED IMPORTED GLOBAL)
+                target_include_directories(Vulkan::shaderc_shared INTERFACE "$ENV{VULKAN_SDK}/Include")
+
+                set_property(TARGET Vulkan::shaderc_shared APPEND PROPERTY IMPORTED_CONFIGURATIONS RELEASE)
+                set_target_properties(Vulkan::shaderc_shared PROPERTIES
+                    IMPORTED_LOCATION_RELEASE "${Vulkan_shaderc_shared_DLL}"
+                    IMPORTED_IMPLIB_RELEASE   "${Vulkan_shaderc_shared_LIBRARY}")
+
+                if(Vulkan_shaderc_shared_DEBUG_LIB AND Vulkan_shaderc_shared_DEBUG_DLL)
+                    set_property(TARGET Vulkan::shaderc_shared APPEND PROPERTY IMPORTED_CONFIGURATIONS DEBUG)
+                    set_target_properties(Vulkan::shaderc_shared PROPERTIES
+                        IMPORTED_LOCATION_DEBUG "${Vulkan_shaderc_shared_DEBUG_DLL}"
+                        IMPORTED_IMPLIB_DEBUG   "${Vulkan_shaderc_shared_DEBUG_LIB}")
+                else()
+                    set_property(TARGET Vulkan::shaderc_shared APPEND PROPERTY IMPORTED_CONFIGURATIONS DEBUG)
+                    set_target_properties(Vulkan::shaderc_shared PROPERTIES
+                        IMPORTED_LOCATION_DEBUG "${Vulkan_shaderc_shared_DLL}"
+                        IMPORTED_IMPLIB_DEBUG   "${Vulkan_shaderc_shared_LIBRARY}")
+                endif()
+
+                message(STATUS "Vulkan rendering backend enabled (shaderc_shared DLL)")
+            else()
+                message(STATUS "Vulkan rendering backend enabled (shaderc_shared not found, shader compilation unavailable)")
+            endif()
+        else()
+            message(STATUS "Vulkan rendering backend enabled (non-Windows, skipping shaderc_shared)")
+        endif()
     else()
         set(LUS_ENABLE_VULKAN OFF CACHE INTERNAL "Vulkan backend available")
-        message(STATUS "Vulkan rendering backend disabled (Vulkan: ${Vulkan_FOUND}, shaderc: ${SHADERC_SHARED_LIB})")
+        message(STATUS "Vulkan rendering backend disabled")
     endif()
 else()
     set(LUS_ENABLE_VULKAN OFF CACHE INTERNAL "Vulkan backend available")

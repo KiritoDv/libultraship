@@ -170,8 +170,10 @@ target_link_libraries(libultraship PUBLIC prism monocypher)
 
 if (LUS_ENABLE_VULKAN)
     target_compile_definitions(libultraship PUBLIC ENABLE_VULKAN)
-    target_include_directories(libultraship PRIVATE ${SHADERC_INCLUDE_DIR})
-    target_link_libraries(libultraship PUBLIC Vulkan::Vulkan ${SHADERC_SHARED_LIB})
+    target_link_libraries(libultraship PUBLIC Vulkan::Vulkan)
+    if(TARGET Vulkan::shaderc_shared)
+        target_link_libraries(libultraship PUBLIC Vulkan::shaderc_shared)
+    endif()
 endif()
 
 if(ENABLE_SCRIPTING)
