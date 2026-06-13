@@ -192,7 +192,6 @@ class GfxRenderingAPIVK final : public GfxRenderingAPI {
     void DeleteTexture(uint32_t texId) override;
     void SetTextureFilter(FilteringMode mode) override;
     FilteringMode GetTextureFilter() override;
-    void SetSrgbMode() override;
     ImTextureID GetTextureById(int id) override;
 
     // Called from Fast3dGui (mirrors the Metal backend's custom ImGui hooks)

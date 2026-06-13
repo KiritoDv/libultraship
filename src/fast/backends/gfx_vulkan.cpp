@@ -199,7 +199,7 @@ static std::optional<std::string> vulkan_include_fs(const std::string& path) {
     return *static_cast<std::string*>(res->GetRawPointer());
 }
 
-static std::string BuildVulkanShader(const CCFeatures& cc_features, bool vertex, bool threePoint, bool srgb) {
+static std::string BuildVulkanShader(const CCFeatures& cc_features, bool vertex, bool threePoint) {
     prism::Processor processor;
     prism::ContextItems context = {
         { "BACKEND", "vulkan" },
@@ -239,7 +239,6 @@ static std::string BuildVulkanShader(const CCFeatures& cc_features, bool vertex,
         { "o_do_multiply", M_ARRAY(cc_features.do_multiply, bool, 2, 2) },
         { "o_color_alpha_same", M_ARRAY(cc_features.color_alpha_same, bool, 2) },
         { "o_three_point_filtering", threePoint },
-        { "srgb_mode", srgb },
         { "FILTER_THREE_POINT", FILTER_THREE_POINT },
         { "FILTER_LINEAR", FILTER_LINEAR },
         { "FILTER_NONE", FILTER_NONE },
@@ -1150,8 +1149,8 @@ ShaderProgram* GfxRenderingAPIVK::CreateAndLoadNewShader(uint64_t shaderId0, uin
     CCFeatures cc_features;
     gfx_cc_get_features(shaderId0, shaderId1, &cc_features);
 
-    std::string vsSource = BuildVulkanShader(cc_features, true, mCurrentFilterMode == FILTER_THREE_POINT, mSrgbMode);
-    std::string fsSource = BuildVulkanShader(cc_features, false, mCurrentFilterMode == FILTER_THREE_POINT, mSrgbMode);
+    std::string vsSource = BuildVulkanShader(cc_features, true, mCurrentFilterMode == FILTER_THREE_POINT);
+    std::string fsSource = BuildVulkanShader(cc_features, false, mCurrentFilterMode == FILTER_THREE_POINT);
 
     std::vector<uint32_t> vsSpirv = CompileGlslToSpirv(vsSource, true);
     std::vector<uint32_t> fsSpirv = CompileGlslToSpirv(fsSource, false);
@@ -2375,10 +2374,6 @@ void GfxRenderingAPIVK::SetTextureFilter(FilteringMode mode) {
 
 FilteringMode GfxRenderingAPIVK::GetTextureFilter() {
     return mCurrentFilterMode;
-}
-
-void GfxRenderingAPIVK::SetSrgbMode() {
-    mSrgbMode = true;
 }
 
 } // namespace Fast

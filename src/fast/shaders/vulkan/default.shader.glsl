@@ -44,13 +44,6 @@
         return fract(sin(random) * 143758.5453);
     }
 
-    vec4 fromLinear(vec4 linearRGB){
-        bvec3 cutoff = lessThan(linearRGB.rgb, vec3(0.0031308));
-        vec3 higher = vec3(1.055)*pow(linearRGB.rgb, vec3(1.0/2.4)) - vec3(0.055);
-        vec3 lower = linearRGB.rgb * vec3(12.92);
-        return vec4(mix(higher, lower, cutoff), linearRGB.a);
-    }
-
     vec4 filter3point(in sampler2D tex, in vec2 texCoord, in vec2 texSize) {
         vec2 offset = fract(texCoord*texSize - vec2(0.5));
         offset -= step(1.0, offset.x + offset.y);
@@ -249,10 +242,6 @@
             vOutColor = texel;
         @else
             vOutColor = vec4(texel, 1.0);
-        @end
-
-        @if(srgb_mode)
-            vOutColor = fromLinear(vOutColor);
         @end
 
         @if(o_prim_depth)

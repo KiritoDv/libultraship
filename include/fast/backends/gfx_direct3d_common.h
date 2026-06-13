@@ -134,7 +134,6 @@ class GfxRenderingAPIDX11 final : public GfxRenderingAPI {
     void DeleteTexture(uint32_t texId) override;
     void SetTextureFilter(FilteringMode mode) override;
     FilteringMode GetTextureFilter() override;
-    void SetSrgbMode() override;
     ImTextureID GetTextureById(int id) override;
 
     PFN_D3D11_CREATE_DEVICE mDX11CreateDevice;
@@ -214,7 +213,7 @@ class GfxRenderingAPIDX11 final : public GfxRenderingAPI {
 };
 
 std::string gfx_direct3d_common_build_shader(size_t& numFloats, const CCFeatures& cc_features,
-                                             bool include_root_signature, bool three_point_filtering, bool use_srgb);
+                                             bool include_root_signature, bool three_point_filtering);
 } // namespace Fast
 #endif
 #endif

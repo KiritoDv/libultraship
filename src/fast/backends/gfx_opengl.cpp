@@ -358,7 +358,6 @@ std::string GfxRenderingAPIOGL::BuildFsShader(const CCFeatures& cc_features) {
         { "FILTER_THREE_POINT", FILTER_THREE_POINT },
         { "FILTER_LINEAR", FILTER_LINEAR },
         { "FILTER_NONE", FILTER_NONE },
-        { "srgb_mode", mSrgbMode },
         { "SHADER_0", SHADER_0 },
         { "SHADER_INPUT_1", SHADER_INPUT_1 },
         { "SHADER_INPUT_2", SHADER_INPUT_2 },
@@ -1278,10 +1277,6 @@ void GfxRenderingAPIOGL::SetTextureFilter(FilteringMode mode) {
 
 FilteringMode GfxRenderingAPIOGL::GetTextureFilter() {
     return mCurrentFilterMode;
-}
-
-void GfxRenderingAPIOGL::SetSrgbMode() {
-    mSrgbMode = true;
 }
 
 ImTextureID GfxRenderingAPIOGL::GetTextureById(int id) {
