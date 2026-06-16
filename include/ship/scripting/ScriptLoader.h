@@ -26,9 +26,11 @@ enum class SafeLevel {
 /**
  * @brief Manages compilation, loading, and lifetime of runtime scripts.
  *
- * ScriptLoader compiles C/C++ source files found in mounted archives using TCC
- * (Tiny C Compiler), then loads the resulting shared objects at runtime so their
- * exported functions can be called by the engine via GetFunction().
+ * ScriptLoader compiles C source files found in mounted archives using the
+ * embedded Clang/LLVM compiler, then loads the resulting shared objects at
+ * runtime so their exported functions can be called by the engine via
+ * GetFunction(). Mods may alternatively ship pre-compiled platform binaries
+ * in the archive's "binaries" map to bypass compilation entirely.
  */
 class ScriptLoader {
   public:

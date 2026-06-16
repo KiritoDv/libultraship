@@ -239,253 +239,135 @@ target_include_directories(monocypher PUBLIC
     ${monocypher_SOURCE_DIR}/src/optional
 )
 
-#=========== libtcc ===========
+#=========== LLVM/Clang (scripting) ===========
+# Replaces TCC. On Linux/macOS uses the system-installed LLVM/Clang dev
+# libraries; on Windows, if no system install is found, automatically downloads
+# the official pre-built LLVM release from GitHub (one-time, ~350 MB).
+# Only the native target is compiled in, keeping binary size as small as
+# possible relative to the full all-targets LLVM.
 if(ENABLE_SCRIPTING)
+    # The pre-built LLVM version used for the Windows auto-download.
+    set(_lus_llvm_auto_version "18.1.8")
 
-FetchContent_Declare(
-    tinycc
-    GIT_REPOSITORY https://github.com/Net64DD/tinycc.git
-    GIT_TAG        mob
-)
+    # Search common install locations before falling back to system paths.
+    set(_lus_llvm_hints
+        "$ENV{LLVM_DIR}"
+        # Homebrew on Apple Silicon
+        "/opt/homebrew/opt/llvm/lib/cmake/llvm"
+        # Homebrew on Intel macOS
+        "/usr/local/opt/llvm/lib/cmake/llvm"
+        # Ubuntu/Debian versioned packages (newest first)
+        "/usr/lib/llvm-19/lib/cmake/llvm"
+        "/usr/lib/llvm-18/lib/cmake/llvm"
+        "/usr/lib/llvm-17/lib/cmake/llvm"
+        "/usr/lib/llvm-16/lib/cmake/llvm"
+        "/usr/lib/llvm-15/lib/cmake/llvm"
+        "/usr/lib/llvm-14/lib/cmake/llvm"
+        # LLVM Windows installer default path
+        "C:/Program Files/LLVM/lib/cmake/llvm"
+    )
+    set(_lus_clang_hints
+        "$ENV{Clang_DIR}"
+        "/opt/homebrew/opt/llvm/lib/cmake/clang"
+        "/usr/local/opt/llvm/lib/cmake/clang"
+        "/usr/lib/llvm-19/lib/cmake/clang"
+        "/usr/lib/llvm-18/lib/cmake/clang"
+        "/usr/lib/llvm-17/lib/cmake/clang"
+        "/usr/lib/llvm-16/lib/cmake/clang"
+        "/usr/lib/llvm-15/lib/cmake/clang"
+        "/usr/lib/llvm-14/lib/cmake/clang"
+        # LLVM Windows installer default path
+        "C:/Program Files/LLVM/lib/cmake/clang"
+    )
 
-FetchContent_MakeAvailable(tinycc)
-if(NOT TARGET libtcc)
-    if(NOT EXISTS "${tinycc_SOURCE_DIR}/config.h" AND NOT EXISTS "${tinycc_SOURCE_DIR}/win32/config.h")
-        message(STATUS "Configuring TinyCC to generate config.h...")
-        if(WIN32)
-            execute_process(
-                COMMAND cmd /c build-tcc.bat -c cl
-                WORKING_DIRECTORY "${tinycc_SOURCE_DIR}/win32"
-                RESULT_VARIABLE tcc_config_result
-            )
+    find_package(LLVM CONFIG QUIET HINTS ${_lus_llvm_hints})
+    find_package(Clang CONFIG QUIET HINTS ${_lus_clang_hints})
+
+    # ------------------------------------------------------------------ #
+    #  Windows auto-download fallback                                      #
+    # ------------------------------------------------------------------ #
+    # If no system/user LLVM was found and we are on Windows, download the
+    # official pre-built clang+llvm release from the LLVM GitHub releases.
+    # The archive already contains LLVMConfig.cmake and ClangConfig.cmake,
+    # so a second find_package() pointed at the extracted tree works
+    # without building anything from source.
+    #
+    # WARNING: The archive is ~350 MB compressed / ~1.5 GB extracted.
+    # It is cached by CMake's FetchContent so the download only happens
+    # once per build directory.  Override _lus_llvm_auto_version above to
+    # pin a different release.
+    if(WIN32 AND (NOT LLVM_FOUND OR NOT Clang_FOUND))
+        if(CMAKE_GENERATOR_PLATFORM MATCHES "ARM64" OR
+           CMAKE_SYSTEM_PROCESSOR MATCHES "ARM64|aarch64")
+            set(_lus_llvm_win_triple "aarch64-pc-windows-msvc")
         else()
+            set(_lus_llvm_win_triple "x86_64-pc-windows-msvc")
+        endif()
+
+        set(_lus_llvm_archive
+            "clang+llvm-${_lus_llvm_auto_version}-${_lus_llvm_win_triple}")
+        message(STATUS
+            "Scripting: LLVM not found — downloading pre-built "
+            "${_lus_llvm_archive} (~350 MB, cached after first run)...")
+
+        FetchContent_Declare(llvm_prebuilt
+            URL "https://github.com/llvm/llvm-project/releases/download/llvmorg-${_lus_llvm_auto_version}/${_lus_llvm_archive}.tar.xz"
+            DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        )
+        FetchContent_MakeAvailable(llvm_prebuilt)
+
+        # Point find_package at the extracted tree and re-run.
+        set(LLVM_DIR  "${llvm_prebuilt_SOURCE_DIR}/lib/cmake/llvm"  CACHE PATH "Auto-downloaded LLVM cmake dir"  FORCE)
+        set(Clang_DIR "${llvm_prebuilt_SOURCE_DIR}/lib/cmake/clang" CACHE PATH "Auto-downloaded Clang cmake dir" FORCE)
+
+        find_package(LLVM  CONFIG REQUIRED HINTS "${LLVM_DIR}"  NO_DEFAULT_PATH)
+        find_package(Clang CONFIG REQUIRED HINTS "${Clang_DIR}" NO_DEFAULT_PATH)
+    endif()
+
+    if(NOT LLVM_FOUND OR NOT Clang_FOUND)
+        message(FATAL_ERROR
+            "LLVM/Clang development libraries not found.\n"
+            "ENABLE_SCRIPTING requires LLVM >= 14 with Clang headers installed.\n\n"
+            "  macOS (Homebrew):  brew install llvm\n"
+            "                     export LLVM_DIR=$(brew --prefix llvm)/lib/cmake/llvm\n"
+            "  Ubuntu/Debian:     apt install llvm-dev libclang-dev clang\n"
+            "  Windows:           auto-downloaded — check the CMake log for errors.\n\n"
+            "Or set -DLLVM_DIR and -DClang_DIR explicitly to a compatible install.")
+    endif()
+
+    if(LLVM_PACKAGE_VERSION VERSION_LESS "14.0")
+        message(FATAL_ERROR "LLVM >= 14.0 required for scripting (found ${LLVM_PACKAGE_VERSION})")
+    endif()
+
+    message(STATUS "Scripting: LLVM ${LLVM_PACKAGE_VERSION} at ${LLVM_DIR}")
+    message(STATUS "Scripting: Clang at ${Clang_DIR}")
+
+    # Resolve the Clang resource directory (built-in headers like stddef.h).
+    # We bake it in as a compile-time constant so ScriptLoader can locate the
+    # bundled .clang/ headers without needing a real clang binary at runtime.
+    if(NOT CLANG_RESOURCE_DIR)
+        find_program(_lus_clang_exe
+            NAMES clang-${LLVM_PACKAGE_VERSION} clang-19 clang-18 clang-17 clang-16 clang-15 clang-14 clang
+            HINTS "${LLVM_TOOLS_BINARY_DIR}"
+            NO_DEFAULT_PATH
+        )
+        if(_lus_clang_exe)
             execute_process(
-                COMMAND ./configure
-                WORKING_DIRECTORY "${tinycc_SOURCE_DIR}"
-                RESULT_VARIABLE tcc_config_result
+                COMMAND "${_lus_clang_exe}" -print-resource-dir
+                OUTPUT_VARIABLE CLANG_RESOURCE_DIR
+                ERROR_QUIET
+                OUTPUT_STRIP_TRAILING_WHITESPACE
             )
         endif()
-
-        if(NOT tcc_config_result EQUAL 0)
-            message(WARNING "TinyCC configuration script returned non-zero. The build might fail.")
-        endif()
-
-        if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
-            message(STATUS "iOS target detected: Disabling CONFIG_CODESIGN...")
-            file(APPEND "${tinycc_SOURCE_DIR}/config.h" "\n/* Force disable code signing for iOS cross-compilation */\n#undef CONFIG_CODESIGN\n")
+        if(NOT CLANG_RESOURCE_DIR)
+            # Fall back: common layout relative to include dirs
+            list(GET CLANG_INCLUDE_DIRS 0 _lus_clang_inc)
+            get_filename_component(_lus_clang_root "${_lus_clang_inc}" DIRECTORY)
+            set(CLANG_RESOURCE_DIR "${_lus_clang_root}/lib/clang/${LLVM_PACKAGE_VERSION}")
         endif()
     endif()
-    if(UNIX AND NOT ANDROID AND NOT APPLE)
-        set(_tcc_crt_dir "")
-        foreach(_dir ${CMAKE_C_IMPLICIT_LINK_DIRECTORIES})
-            if(EXISTS "${_dir}/crti.o")
-                set(_tcc_crt_dir "${_dir}")
-                break()
-            endif()
-        endforeach()
+    message(STATUS "Scripting: Clang resource dir = ${CLANG_RESOURCE_DIR}")
 
-        if(NOT _tcc_crt_dir)
-            message(WARNING "TinyCC: crti.o not found in compiler implicit dirs — TCC mod compilation may fail at runtime")
-        endif()
-
-        file(READ "${tinycc_SOURCE_DIR}/config.h" _tcc_config_h)
-        if(NOT _tcc_config_h MATCHES "\\{B\\}/lib")
-            string(REGEX REPLACE "#define CONFIG_TCC_CRTPREFIX[^\n]*\n?" "" _tcc_config_h "${_tcc_config_h}")
-            set(_tcc_crt_prefix "{B}/lib")
-            if(_tcc_crt_dir)
-                string(APPEND _tcc_crt_prefix ":${_tcc_crt_dir}")
-            endif()
-            string(APPEND _tcc_config_h "\n/* Bundled .tcc/lib/ tried first; system dir as fallback */\n")
-            string(APPEND _tcc_config_h "#define CONFIG_TCC_CRTPREFIX \"${_tcc_crt_prefix}\"\n")
-            file(WRITE "${tinycc_SOURCE_DIR}/config.h" "${_tcc_config_h}")
-            message(STATUS "TinyCC: CONFIG_TCC_CRTPREFIX set to \"${_tcc_crt_prefix}\"")
-        endif()
-        unset(_tcc_config_h)
-        unset(_tcc_crt_dir)
-        unset(_tcc_crt_prefix)
-    endif()
-
-    if(CMAKE_CROSSCOMPILING)
-        find_program(HOST_C_COMPILER NAMES cc clang gcc REQUIRED)
-        set(C2STR_EXE "${tinycc_BINARY_DIR}/tcc_c2str_host")
-        if(CMAKE_HOST_WIN32)
-            set(C2STR_EXE "${C2STR_EXE}.exe")
-        endif()
-
-        set(SIGN_COMMAND "")
-        if(CMAKE_HOST_APPLE)
-            set(SIGN_COMMAND COMMAND codesign -f -s - "${C2STR_EXE}")
-        endif()
-
-        add_custom_command(
-            OUTPUT "${C2STR_EXE}"
-            COMMAND ${CMAKE_COMMAND} -E env --unset=SDKROOT --unset=IPHONEOS_DEPLOYMENT_TARGET --unset=TVOS_DEPLOYMENT_TARGET
-                    ${HOST_C_COMPILER} -DC2STR -o "${C2STR_EXE}" "${tinycc_SOURCE_DIR}/conftest.c"
-            ${SIGN_COMMAND}
-            DEPENDS "${tinycc_SOURCE_DIR}/conftest.c"
-            COMMENT "Compiling host tool c2str natively..."
-        )
-
-        add_custom_command(
-            OUTPUT "${tinycc_BINARY_DIR}/tccdefs_.h"
-            COMMAND "${C2STR_EXE}" "${tinycc_SOURCE_DIR}/include/tccdefs.h" "${tinycc_BINARY_DIR}/tccdefs_.h"
-            DEPENDS "${tinycc_SOURCE_DIR}/include/tccdefs.h" "${C2STR_EXE}"
-            COMMENT "Generating tccdefs_.h for TinyCC (Cross-compiling)..."
-        )
-    else()
-        add_executable(tcc_c2str "${tinycc_SOURCE_DIR}/conftest.c")
-        target_compile_definitions(tcc_c2str PRIVATE C2STR $<$<BOOL:${MSVC}>:_CRT_SECURE_NO_WARNINGS>)
-        target_include_directories(tcc_c2str PRIVATE "${tinycc_SOURCE_DIR}")
-
-        if(APPLE)
-            set_target_properties(tcc_c2str PROPERTIES
-                CODE_SIGNING_ALLOWED NO
-                CODE_SIGNING_REQUIRED NO
-                XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
-                XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED "NO"
-                XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY ""
-                XCODE_ATTRIBUTE_DEVELOPMENT_TEAM ""
-            )
-        endif()
-
-        add_custom_command(
-            OUTPUT "${tinycc_BINARY_DIR}/tccdefs_.h"
-            COMMAND tcc_c2str "${tinycc_SOURCE_DIR}/include/tccdefs.h" "${tinycc_BINARY_DIR}/tccdefs_.h"
-            DEPENDS "${tinycc_SOURCE_DIR}/include/tccdefs.h" tcc_c2str
-            COMMENT "Generating tccdefs_.h for TinyCC..."
-        )
-    endif()
-
-    # libtcc is LGPL — keep it as a shared library so users can replace it
-    # without relinking the application (LGPL §6).
-    add_library(libtcc SHARED
-        "${tinycc_SOURCE_DIR}/libtcc.c"
-        "${tinycc_BINARY_DIR}/tccdefs_.h"
-    )
-
-    if(UNIX AND NOT ANDROID AND NOT APPLE)
-        add_executable(tcc_native_bin "${tinycc_SOURCE_DIR}/tcc.c")
-        target_compile_definitions(tcc_native_bin PRIVATE ONE_SOURCE=0)
-        target_include_directories(tcc_native_bin PRIVATE
-            "${tinycc_SOURCE_DIR}"
-            "${tinycc_BINARY_DIR}"
-        )
-        target_link_libraries(tcc_native_bin PRIVATE libtcc)
-        if(NOT APPLE)
-            target_link_libraries(tcc_native_bin PRIVATE dl m pthread)
-        endif()
-        set_target_properties(tcc_native_bin PROPERTIES
-            OUTPUT_NAME "tcc"
-            RUNTIME_OUTPUT_DIRECTORY "${tinycc_SOURCE_DIR}"
-            BUILD_RPATH "$<TARGET_FILE_DIR:libtcc>"
-        )
-
-        find_program(GNU_MAKE_PROGRAM NAMES make gmake REQUIRED)
-        add_custom_command(
-            OUTPUT "${tinycc_SOURCE_DIR}/libtcc1.a"
-            COMMAND ${GNU_MAKE_PROGRAM} -C "${tinycc_SOURCE_DIR}/lib"
-            DEPENDS
-                tcc_native_bin
-                libtcc
-                "${tinycc_BINARY_DIR}/tccdefs_.h"
-            COMMENT "Building libtcc1.a via TinyCC Makefile..."
-            VERBATIM
-        )
-        add_custom_target(libtcc1_make_build
-            DEPENDS "${tinycc_SOURCE_DIR}/libtcc1.a"
-        )
-
-        add_library(libtcc1 STATIC IMPORTED GLOBAL)
-        set_target_properties(libtcc1 PROPERTIES
-            IMPORTED_LOCATION "${tinycc_SOURCE_DIR}/libtcc1.a"
-        )
-        add_dependencies(libtcc1 libtcc1_make_build)
-    else()
-        add_library(libtcc1 STATIC
-            "${tinycc_SOURCE_DIR}/lib/libtcc1.c"
-        )
-        target_include_directories(libtcc1 PRIVATE
-            "${tinycc_SOURCE_DIR}"
-            "${tinycc_BINARY_DIR}"
-            $<$<BOOL:${WIN32}>:${tinycc_SOURCE_DIR}/win32>
-        )
-        if(MSVC)
-            if(CMAKE_GENERATOR_PLATFORM MATCHES "ARM64" OR CMAKE_SYSTEM_PROCESSOR MATCHES "ARM64|aarch64")
-                target_compile_definitions(libtcc1 PRIVATE __aarch64__ _WIN64)
-                target_compile_definitions(libtcc  PRIVATE __aarch64__ TCC_TARGET_ARM64 TCC_TARGET_PE _WIN64)
-            else()
-                target_compile_definitions(libtcc1 PRIVATE __x86_64__ _WIN64)
-                target_compile_definitions(libtcc  PRIVATE __x86_64__ TCC_TARGET_X86_64 TCC_TARGET_PE _WIN64)
-            endif()
-            target_compile_definitions(libtcc1 PRIVATE "__faststorefence=__faststorefence_tcc_unused")
-            # MSVC's <assert.h> defines `__assert`, which collides with TCC's internal
-            # `__assert` symbol. Rename TCC's use the same way `__faststorefence` is above.
-            target_compile_definitions(libtcc PRIVATE "__assert=__assert_tcc_unused")
-        endif()
-        set_target_properties(libtcc1 PROPERTIES OUTPUT_NAME "tcc1")
-    endif()
-
-    set(TCC_SAFE_INCLUDE_DIR "${tinycc_BINARY_DIR}/safe_include")
-    configure_file(
-        "${tinycc_SOURCE_DIR}/libtcc.h"
-        "${TCC_SAFE_INCLUDE_DIR}/libtcc.h"
-        COPYONLY
-    )
-
-    target_include_directories(libtcc PRIVATE
-        "${tinycc_SOURCE_DIR}"
-        "${tinycc_BINARY_DIR}"
-        $<$<BOOL:${WIN32}>:${tinycc_SOURCE_DIR}/win32>
-    )
-    target_include_directories(libtcc PUBLIC
-        $<BUILD_INTERFACE:${TCC_SAFE_INCLUDE_DIR}>
-    )
-
-    if(WIN32)
-        set_target_properties(libtcc PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
-
-        # The GitHub TinyCC mirror omits the pre-built win32/tcc.exe that the
-        # official repo ships. Build it from source using the official batch
-        # script so SetupTccRuntime.cmake can use it for .def generation.
-        # cl.exe is guaranteed in PATH at build time (VS environment is active).
-        if(MSVC AND (NOT EXISTS "${tinycc_SOURCE_DIR}/win32/tcc.exe" OR NOT EXISTS "${tinycc_SOURCE_DIR}/win32/lib/libtcc1.a"))
-            add_custom_command(
-                OUTPUT
-                    "${tinycc_SOURCE_DIR}/win32/tcc.exe"
-                    "${tinycc_SOURCE_DIR}/win32/lib/libtcc1.a"
-                COMMAND cmd /c build-tcc.bat -c cl
-                WORKING_DIRECTORY "${tinycc_SOURCE_DIR}/win32"
-                DEPENDS
-                    "${tinycc_SOURCE_DIR}/tcc.c"
-                    "${tinycc_SOURCE_DIR}/libtcc.c"
-                COMMENT "Building tcc.exe and libtcc1.a via build-tcc.bat..."
-            )
-            add_custom_target(tcc_win32_exe
-                DEPENDS
-                    "${tinycc_SOURCE_DIR}/win32/tcc.exe"
-                    "${tinycc_SOURCE_DIR}/win32/lib/libtcc1.a"
-            )
-        endif()
-    endif()
-
-    if(ANDROID)
-        target_link_libraries(libtcc PRIVATE dl m)
-    elseif(UNIX AND NOT APPLE)
-        target_link_libraries(libtcc PRIVATE dl m pthread)
-    endif()
-    
-    set_target_properties(libtcc PROPERTIES OUTPUT_NAME "tcc")
-
-    if(APPLE)
-        set_target_properties(libtcc libtcc1 PROPERTIES
-            CODE_SIGNING_ALLOWED NO
-            CODE_SIGNING_REQUIRED NO
-            XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
-            XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED "NO"
-            XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY ""
-            XCODE_ATTRIBUTE_DEVELOPMENT_TEAM ""
-        )
-    endif()
-endif()
-
+    # Expose resource dir to ScriptLoader.cpp at compile time.
+    set(LUS_CLANG_RESOURCE_DIR "${CLANG_RESOURCE_DIR}" CACHE INTERNAL "")
 endif() # ENABLE_SCRIPTING

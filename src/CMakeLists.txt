@@ -179,8 +179,57 @@ if (LUS_ENABLE_VULKAN)
 endif()
 
 if(ENABLE_SCRIPTING)
-    target_link_libraries(libultraship PUBLIC libtcc libtcc1)
-    target_compile_definitions(libultraship PUBLIC ENABLE_SCRIPTING)
+    if(LLVM_LINK_LLVM_DYLIB)
+        # Homebrew and some Linux distros build LLVM with -DLLVM_LINK_LLVM_DYLIB=ON,
+        # producing libLLVM.dylib and libclang-cpp.dylib that bundle everything.
+        # Their static .a files contain LTO bitcode compiled by the Homebrew/distro
+        # LLVM version.  Apple's system ld (and some older GNU ld) cannot parse this
+        # bitcode when there is a version mismatch between the producer and the LTO
+        # reader embedded in the linker.  Link against the pre-linked shared libraries
+        # to avoid touching the bitcode-embedded .a files entirely.
+        list(GET LLVM_LIBRARY_DIRS 0 _lus_llvm_lib_dir)
+        target_link_libraries(libultraship PUBLIC
+            "${_lus_llvm_lib_dir}/libclang-cpp${CMAKE_SHARED_LIBRARY_SUFFIX}"
+            "${_lus_llvm_lib_dir}/libLLVM${CMAKE_SHARED_LIBRARY_SUFFIX}"
+        )
+    else()
+        # Static linking path: Linux apt packages, Windows prebuilt, or any
+        # LLVM install that does not embed LTO bitcode in its .a files.
+        #
+        # "nativeasmparser" is intentionally excluded: it expands to arch-specific
+        # names (LLVMAArch64AsmParser etc.) that some installs do not expose as a
+        # pseudo-component, and the Clang Driver never needs it for C source files.
+        llvm_map_components_to_libnames(_lus_llvm_scripting_libs
+            core support target nativecodegen
+            passes analysis instcombine scalaropts transformutils
+            object mc mcparser bitwriter bitreader
+        )
+        target_link_libraries(libultraship PUBLIC
+            clangDriver
+            clangFrontend
+            clangCodeGen
+            clangSema
+            clangAnalysis
+            clangEdit
+            clangAST
+            clangParse
+            clangLex
+            clangBasic
+            clangSerialization
+            ${_lus_llvm_scripting_libs}
+        )
+    endif()
+    target_include_directories(libultraship PUBLIC
+        ${LLVM_INCLUDE_DIRS}
+        ${CLANG_INCLUDE_DIRS}
+    )
+    target_compile_definitions(libultraship PUBLIC
+        ENABLE_SCRIPTING
+        ${LLVM_DEFINITIONS}
+        # Bake in the build-time resource dir; ScriptLoader uses it as the
+        # default when no bundled .clang/ directory is found at runtime.
+        LUS_CLANG_RESOURCE_DIR="${LUS_CLANG_RESOURCE_DIR}"
+    )
 endif()
 
 #=================== Compile Options & Defs ===================

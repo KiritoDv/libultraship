@@ -372,3 +372,6 @@ extern/nlohmann-json/*_jsonConfig*
 *.xcworkspace
 *.xcsettings
 build*
+CMakeFiles/
+Makefile
+generate_keys_header

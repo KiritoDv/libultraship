@@ -9,12 +9,28 @@
 #include <optional>
 #include <sstream>
 #include <string_view>
-#include <libtcc.h>
 #include <memory>
+#include <mutex>
 #include <queue>
 #include <unordered_map>
 #include <fstream>
 #include <iomanip>
+
+// Clang/LLVM headers for in-process C compilation
+#include <clang/Driver/Compilation.h>
+#include <clang/Driver/Driver.h>
+#include <clang/Basic/DiagnosticOptions.h>
+#include <clang/Frontend/TextDiagnosticPrinter.h>
+#include <llvm/Config/llvm-config.h>
+#include <llvm/Support/TargetSelect.h>
+#include <llvm/Support/VirtualFileSystem.h>
+#include <llvm/Support/raw_ostream.h>
+#include <llvm/ADT/SmallVector.h>
+#if LLVM_VERSION_MAJOR >= 17
+#include <llvm/TargetParser/Host.h>
+#else
+#include <llvm/Support/Host.h>
+#endif
 
 #include "ship/Context.h"
 #include "ship/config/ConsoleVariable.h"
@@ -211,118 +227,196 @@ void ScriptLoader::Compile(const std::shared_ptr<Archive>& archive) {
             throw std::runtime_error("Failed to load main script: " + info.Main);
         }
 
-        TCCState* s = tcc_new();
-        if (!s) {
-            throw std::runtime_error("Failed to create TCCState");
-        }
-
-        std::string errorLog;
-
-        tcc_set_error_func(s, &errorLog, [](void* opaque, const char* msg) {
-            std::string_view sv(msg);
-            if (sv.find("warning") != std::string_view::npos) {
-                SPDLOG_WARN("Compiler: {}", msg);
-            } else if (sv.find("error") != std::string_view::npos || sv.find("fatal") != std::string_view::npos) {
-                SPDLOG_ERROR("Compiler: {}", msg);
-                auto* log = static_cast<std::string*>(opaque);
-                if (!log->empty()) {
-                    log->push_back('\n');
-                }
-                *log += msg;
-            } else {
-                SPDLOG_INFO("Compiler: {}", msg);
-            }
+        // Initialize LLVM native target once per process.
+        // Use the C++ inline functions from TargetSelect.h, not the C macros.
+        static std::once_flag sLLVMInit;
+        std::call_once(sLLVMInit, []() {
+            llvm::InitializeNativeTarget();
+            llvm::InitializeNativeTargetAsmPrinter();
+            llvm::InitializeNativeTargetAsmParser();
         });
 
-        tcc_define_symbol(s, "__DLL__", "1");
-
-        for (const auto& [key, value] : mCompileDefines) {
-            tcc_define_symbol(s, key.c_str(), value.c_str());
+        // Write all C source files from the archive to a temp directory so
+        // the Clang Driver can read them as ordinary files.
+        const std::string tempDirStr =
+            (std::filesystem::temp_directory_path() /
+             ("lus_modcc_" + std::to_string(std::hash<std::string>{}(info.Name + info.Checksum))))
+                .string();
+        {
+            std::error_code ec;
+            std::filesystem::create_directories(tempDirStr, ec);
+            if (ec) {
+                throw std::runtime_error("Failed to create temp dir for mod compilation: " + ec.message());
+            }
         }
 
-        tcc_set_options(s, mBuildOptions.c_str());
+        // RAII guard: always remove the temp dir when we leave this scope.
+        struct TempDirGuard {
+            const std::string& path;
+            ~TempDirGuard() {
+                std::error_code ec;
+                std::filesystem::remove_all(path, ec);
+            }
+        } tempGuard{ tempDirStr };
 
-        // Tell TCC where its own includes and libtcc1.a live.
-        // We look for a library path whose parent has an "include" sibling
-        // (the canonical .tcc/ root layout).
+        // Parse main file — it is a text list of source-file paths (one per
+        // line), identical to the old TCC path list format.
+        std::vector<std::string> sourceFiles;
+        {
+            const std::vector<uint8_t>& raw = data.value();
+            std::string content(raw.begin(), raw.end());
+            std::istringstream stream(content);
+            std::string line;
+
+            while (std::getline(stream, line)) {
+                if (line.empty()) {
+                    continue;
+                }
+                line.erase(line.find_last_not_of(" \r\n\t") + 1);
+                line.erase(0, line.find_first_not_of(" \r\n\t"));
+                if (line.empty() || line[0] == '#') {
+                    continue;
+                }
+
+                auto buf = LoadFromO2R(line, archive);
+                if (!buf.has_value()) {
+                    throw std::runtime_error("Failed to load script file: '" + line + "'");
+                }
+
+                // Write to temp file; prepend a #line directive so Clang
+                // diagnostic messages name the virtual archive path.
+                auto srcFilePath = std::filesystem::path(tempDirStr) /
+                                   std::filesystem::path(line).filename();
+                std::ofstream out(srcFilePath, std::ios::binary);
+                if (!out.is_open()) {
+                    throw std::runtime_error("Failed to write temp source file: " + srcFilePath.string());
+                }
+                const std::string lineFixer =
+                    "#line 1 \"[" + info.Name + "]:" + line + "\"\n";
+                out.write(lineFixer.data(), static_cast<std::streamsize>(lineFixer.size()));
+                out.write(reinterpret_cast<const char*>(buf->data()),
+                          static_cast<std::streamsize>(buf->size()));
+                out.close();
+                sourceFiles.push_back(srcFilePath.string());
+            }
+        }
+
+        if (sourceFiles.empty()) {
+            throw std::runtime_error("No source files listed in main script for mod: " + info.Name);
+        }
+
+        // Build the Clang Driver argument vector.  This is equivalent to
+        // invoking: clang -shared [-fPIC] -O1 -std=c11 <flags> <defines>
+        //                 <includes> <libs> -o <temp.so> <src1.c> ...
+        std::vector<std::string> argStrs;
+        argStrs.push_back("clang"); // argv[0]: program name (arbitrary)
+        argStrs.push_back("-shared");
+#if !defined(_WIN32)
+        argStrs.push_back("-fPIC");
+#endif
+        argStrs.push_back("-O1");
+        argStrs.push_back("-std=c11");
+        argStrs.push_back("-D__DLL__=1");
+
+        // Pass user-supplied build flags verbatim (e.g. "-g").
+        {
+            std::istringstream opts(mBuildOptions);
+            std::string opt;
+            while (opts >> opt) {
+                argStrs.push_back(std::move(opt));
+            }
+        }
+
+        for (const auto& [key, val] : mCompileDefines) {
+            argStrs.push_back("-D" + key + "=" + val);
+        }
+        for (const auto& p : mIncludePaths) {
+            if (std::filesystem::exists(p) && std::filesystem::is_directory(p)) {
+                argStrs.push_back("-I" + p);
+            } else if (!p.empty()) {
+                SPDLOG_WARN("ScriptLoader: include path does not exist: {}", p);
+            }
+        }
+        for (const auto& p : mLibraryPaths) {
+            if (std::filesystem::exists(p) && std::filesystem::is_directory(p)) {
+                argStrs.push_back("-L" + p);
+            } else if (!p.empty()) {
+                SPDLOG_WARN("ScriptLoader: library path does not exist: {}", p);
+            }
+        }
+        for (const auto& lib : mLibraries) {
+            argStrs.push_back("-l" + lib);
+        }
+        argStrs.push_back("-o");
+        argStrs.push_back(temp);
+        for (const auto& src : sourceFiles) {
+            argStrs.push_back(src);
+        }
+
+        std::vector<const char*> argv;
+        argv.reserve(argStrs.size());
+        for (const auto& s : argStrs) {
+            argv.push_back(s.c_str());
+        }
+
+        // Set up a diagnostics engine that captures errors as a string so we
+        // can surface them in the exception message.
+        //
+        // DiagnosticOptions API changed in LLVM 20:
+        //   < 20: ref-counted (IntrusiveRefCntPtr); TextDiagnosticPrinter takes ptr
+        //  >= 20: plain struct; TextDiagnosticPrinter takes reference
+        std::string errorLog;
+        llvm::raw_string_ostream errorOS(errorLog);
+        llvm::IntrusiveRefCntPtr<clang::DiagnosticIDs> diagIDs = new clang::DiagnosticIDs();
+#if LLVM_VERSION_MAJOR >= 20
+        clang::DiagnosticOptions diagOpts;
+        auto* diagPrinter = new clang::TextDiagnosticPrinter(errorOS, diagOpts);
+        clang::DiagnosticsEngine diagEngine(diagIDs, diagOpts, diagPrinter);
+#else
+        llvm::IntrusiveRefCntPtr<clang::DiagnosticOptions> diagOpts =
+            new clang::DiagnosticOptions();
+        auto* diagPrinter = new clang::TextDiagnosticPrinter(errorOS, diagOpts.get());
+        clang::DiagnosticsEngine diagEngine(diagIDs, diagOpts, diagPrinter);
+#endif
+
+        // Determine the Clang resource directory (built-in headers).
+        // Priority: bundled .clang/ next to the binary > build-time baked path.
+        std::string resourceDir;
         for (const auto& libPath : mLibraryPaths) {
-            auto tccRoot = std::filesystem::path(libPath).parent_path();
-            if (std::filesystem::exists(tccRoot / "include")) {
-                tcc_set_lib_path(s, tccRoot.string().c_str());
+            std::filesystem::path parent = std::filesystem::path(libPath).parent_path();
+            if (std::filesystem::exists(parent / "include")) {
+                resourceDir = parent.string();
                 break;
             }
         }
-
-        tcc_set_output_type(s, TCC_OUTPUT_DLL);
-
-        for (const std::string& includePath : mIncludePaths) {
-            if (!std::filesystem::exists(includePath)) {
-                SPDLOG_WARN("Include path does not exist: {}", includePath);
-                continue;
-            }
-
-            if (!std::filesystem::is_directory(includePath)) {
-                SPDLOG_WARN("Include path is not a directory: {}", includePath);
-                continue;
-            }
-
-            tcc_add_include_path(s, includePath.c_str());
+        if (resourceDir.empty()) {
+            // Fall back to the directory baked in at build time.
+            resourceDir = LUS_CLANG_RESOURCE_DIR;
         }
 
-        for (const std::string& libraryPath : mLibraryPaths) {
-            if (!std::filesystem::exists(libraryPath)) {
-                SPDLOG_WARN("Library path does not exist: {}", libraryPath);
-                continue;
-            }
-
-            if (!std::filesystem::is_directory(libraryPath)) {
-                SPDLOG_WARN("Library path is not a directory: {}", libraryPath);
-                continue;
-            }
-
-            tcc_add_library_path(s, libraryPath.c_str());
+        clang::driver::Driver D("clang", llvm::sys::getDefaultTargetTriple(), diagEngine);
+        D.setTitle("Ghostship ModCC");
+        if (!resourceDir.empty()) {
+            D.ResourceDir = resourceDir;
         }
 
-        for (const std::string& library : mLibraries) {
-            tcc_add_library(s, library.c_str());
+        std::unique_ptr<clang::driver::Compilation> C(
+            D.BuildCompilation(llvm::ArrayRef<const char*>(argv)));
+
+        if (!C || diagEngine.hasErrorOccurred()) {
+            errorOS.flush();
+            throw std::runtime_error(errorLog.empty() ? "Clang: failed to build compilation job for " +
+                                                             info.Name
+                                                       : errorLog);
         }
 
-        const std::vector<uint8_t>& raw = data.value();
-        std::string content(raw.begin(), raw.end());
-        std::istringstream stream(content);
-        std::string line;
+        llvm::SmallVector<std::pair<int, const clang::driver::Command*>> failingCmds;
+        D.ExecuteCompilation(*C, failingCmds);
+        errorOS.flush();
 
-        while (std::getline(stream, line)) {
-            if (line.empty()) {
-                continue;
-            }
-
-            line.erase(line.find_last_not_of(" \r\n\t") + 1);
-            line.erase(0, line.find_first_not_of(" \r\n\t"));
-
-            if (line.empty() || line[0] == '#') {
-                continue;
-            }
-
-            std::string safePath = line;
-
-            auto buf = LoadFromO2R(safePath, archive);
-            if (!buf.has_value()) {
-                tcc_delete(s);
-                throw std::runtime_error("Failed to load script file: '" + safePath + "'");
-            }
-
-            std::string lineFixer = "#line 1 \"[" + info.Name + "]:" + safePath + "\"\n";
-            std::string sourceCode = lineFixer + std::string(buf->begin(), buf->end());
-            if (tcc_compile_string(s, sourceCode.c_str()) == -1) {
-                tcc_delete(s);
-                throw std::runtime_error(errorLog.empty() ? "TCC Error in " + safePath : errorLog);
-            }
-        }
-
-        if (tcc_output_file(s, temp.c_str()) == -1) {
-            tcc_delete(s);
-            throw std::runtime_error(errorLog.empty() ? "Failed to output compiled code for " + temp : errorLog);
+        if (diagEngine.hasErrorOccurred() || !failingCmds.empty()) {
+            throw std::runtime_error(
+                errorLog.empty() ? "Clang: compilation failed for " + info.Name : errorLog);
         }
 
         StoreInCache(info, temp);
