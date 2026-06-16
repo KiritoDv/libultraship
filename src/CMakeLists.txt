@@ -179,26 +179,22 @@ if (LUS_ENABLE_VULKAN)
 endif()
 
 if(ENABLE_SCRIPTING)
-    if(LLVM_LINK_LLVM_DYLIB)
-        # Homebrew and some Linux distros build LLVM with -DLLVM_LINK_LLVM_DYLIB=ON,
-        # producing libLLVM.dylib and libclang-cpp.dylib that bundle everything.
-        # Their static .a files contain LTO bitcode compiled by the Homebrew/distro
-        # LLVM version.  Apple's system ld (and some older GNU ld) cannot parse this
-        # bitcode when there is a version mismatch between the producer and the LTO
-        # reader embedded in the linker.  Link against the pre-linked shared libraries
-        # to avoid touching the bitcode-embedded .a files entirely.
+    if(LLVM_LIBRARY_DIRS)
         list(GET LLVM_LIBRARY_DIRS 0 _lus_llvm_lib_dir)
+    endif()
+    set(_lus_clangcpp_dylib "${_lus_llvm_lib_dir}/libclang-cpp${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    set(_lus_llvm_dylib     "${_lus_llvm_lib_dir}/libLLVM${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    # Prefer combined dylibs on Apple to avoid Apple ld LTO bitcode version mismatch.
+    # File existence check prevents Linux apt (LLVM_LINK_LLVM_DYLIB=ON but no libclang-cpp.so) from taking this path.
+    if((APPLE OR LLVM_LINK_LLVM_DYLIB) AND
+        EXISTS "${_lus_clangcpp_dylib}" AND
+        EXISTS "${_lus_llvm_dylib}")
         target_link_libraries(libultraship PUBLIC
-            "${_lus_llvm_lib_dir}/libclang-cpp${CMAKE_SHARED_LIBRARY_SUFFIX}"
-            "${_lus_llvm_lib_dir}/libLLVM${CMAKE_SHARED_LIBRARY_SUFFIX}"
+            "${_lus_clangcpp_dylib}"
+            "${_lus_llvm_dylib}"
         )
     else()
-        # Static linking path: Linux apt packages, Windows prebuilt, or any
-        # LLVM install that does not embed LTO bitcode in its .a files.
-        #
-        # "nativeasmparser" is intentionally excluded: it expands to arch-specific
-        # names (LLVMAArch64AsmParser etc.) that some installs do not expose as a
-        # pseudo-component, and the Clang Driver never needs it for C source files.
+        # nativeasmparser excluded: not a universal pseudo-component and unused for C compilation.
         llvm_map_components_to_libnames(_lus_llvm_scripting_libs
             core support target nativecodegen
             passes analysis instcombine scalaropts transformutils
