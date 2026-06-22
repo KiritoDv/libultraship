@@ -771,6 +771,8 @@ class Interpreter {
     void LoadPostPassManifest();
     int mInterpolationIndex;
     int mInterpolationIndexTarget;
+    int mInterpolationTotal;
+    float mInterpolationFrac;
 };
 
 void gfx_set_target_ucode(UcodeHandlers ucode);
