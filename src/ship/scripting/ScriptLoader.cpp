@@ -9,7 +9,9 @@
 #include <optional>
 #include <sstream>
 #include <string_view>
+#ifndef DISABLE_TCC_COMPILER
 #include <libtcc.h>
+#endif
 #include <memory>
 #include <queue>
 #include <unordered_map>
@@ -182,6 +184,7 @@ void ScriptLoader::Compile(const std::shared_ptr<Archive>& archive) {
     const auto& binaries = info.Binaries;
     const std::string temp = loader.GenerateTempFile();
 
+#ifndef DISABLE_TCC_COMPILER
     if (info.Binaries.find(std::string(platform)) == info.Binaries.end() && !info.Main.empty()) {
         const auto cachePath = GetCachePath(info);
         if (!cachePath.empty() && std::filesystem::exists(cachePath)) {
@@ -196,6 +199,7 @@ void ScriptLoader::Compile(const std::shared_ptr<Archive>& archive) {
             SPDLOG_WARN("ScriptLoader: failed to restore cache entry, recompiling: {}", ec.message());
         }
     }
+#endif
 
     if (binaries.contains(std::string(platform))) {
         const std::string& path = binaries.at(std::string(platform));
@@ -206,6 +210,12 @@ void ScriptLoader::Compile(const std::shared_ptr<Archive>& archive) {
 
         loader.WriteToTempFile(*data);
     } else if (!info.Main.empty()) {
+#ifdef DISABLE_TCC_COMPILER
+        SPDLOG_WARN("ScriptLoader: '{}' ships C sources but the TCC compiler is disabled; provide a prebuilt "
+                    "binary for this platform",
+                    info.Name);
+        return;
+#else
         const auto data = LoadFromO2R(info.Main, archive);
         if (!data.has_value()) {
             throw std::runtime_error("Failed to load main script: " + info.Main);
@@ -326,6 +336,7 @@ void ScriptLoader::Compile(const std::shared_ptr<Archive>& archive) {
         }
 
         StoreInCache(info, temp);
+#endif // DISABLE_TCC_COMPILER
     }
 
     loader.Init(temp);

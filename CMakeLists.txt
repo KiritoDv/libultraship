@@ -10,6 +10,7 @@ endif()
 option(NON_PORTABLE "Build a non-portable version" OFF)
 option(DISABLE_DLL_LOADER "Disable dynamic library loading support" OFF)
 option(ENABLE_SCRIPTING "Enable TCC-based C mod compilation and scripting system" OFF)
+option(ENABLE_TCC_COMPILER "Build the TCC compiler for compiling mod C sources at runtime (OFF = prebuilt mod binaries only)" ON)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     option(SIGN_LIBRARY "Enable xcode signing" OFF)

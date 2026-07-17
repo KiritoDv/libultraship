@@ -260,7 +260,7 @@ target_include_directories(monocypher PUBLIC
 )
 
 #=========== libtcc ===========
-if(ENABLE_SCRIPTING)
+if(ENABLE_SCRIPTING AND ENABLE_TCC_COMPILER)
 
 FetchContent_Declare(
     tinycc
