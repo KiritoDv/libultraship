@@ -1448,7 +1448,7 @@ VkPipeline GfxRenderingAPIVK::GetPipelineForState(ShaderProgramVK* prg, Framebuf
     } else if (mCurrentZmodeDecal != 0) {
         compareSel = mCurrentStrictDecal ? 3 : 2;
     } else {
-        compareSel = 1;
+        compareSel = 2; // LEQUAL: coplanar transparent overlays at equal depth still draw
     }
     uint32_t cullSel = mCurrentCullKeepSign > 0 ? 1 : (mCurrentCullKeepSign < 0 ? 2 : 0);
     bool depthBias = mCurrentZmodeDecal && !mCurrentStrictDecal;

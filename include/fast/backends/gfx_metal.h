@@ -14,6 +14,7 @@
 #include <simd/simd.h>
 
 static constexpr size_t kMaxVertexBufferPoolSize = 3;
+static constexpr size_t kVertexBufferBaseSize = 256 * 32 * 3 * sizeof(float) * 50;
 static constexpr size_t METAL_MAX_MULTISAMPLE_SAMPLE_COUNT = 8;
 static constexpr size_t MAX_PIXEL_DEPTH_COORDS = 1024;
 
@@ -212,6 +213,9 @@ class GfxRenderingAPIMetal final : public GfxRenderingAPI {
 
     int mCurrentVertexBufferPoolIndex = 0;
     MTL::Buffer* mVertexBufferPool[kMaxVertexBufferPoolSize];
+    size_t mVertexBufferCapacity[kMaxVertexBufferPoolSize];
+    size_t mVertexBufferPeakThisFrame = 0;
+    size_t mVertexBufferPeakLastFrame = 0;
     std::unordered_map<std::pair<uint64_t, uint64_t>, struct ShaderProgramMetal, hash_pair_shader_ids>
         mShaderProgramPool;
 
