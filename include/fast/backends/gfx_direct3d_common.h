@@ -41,7 +41,7 @@ struct PerDrawCB {
     float palette_params[2][4];
     float lod_params[4];
     // Game-bindable register file; lockstep with the HLSL template's PerDrawCB
-    float uCustom[16][4];
+    float uCustom[GFX_NUM_CUSTOM_UNIFORMS][4];
     float debug_tint[4]; // HD-replacement debug tint: rgb = color, a = mix amount
 };
 
