@@ -4281,7 +4281,7 @@ bool Interpreter::HasPostPasses() {
 void Interpreter::LoadPostPassManifest() {
     mPostManifestChecked = true;
 
-    auto resourceManager = Ship::Context::GetInstance()->GetResourceManager();
+    auto resourceManager = mResourceManager;
     if (resourceManager == nullptr || resourceManager->GetArchiveManager() == nullptr) {
         return;
     }
@@ -4509,7 +4509,7 @@ void gfx_register_shader_settings(int16_t shaderId, const std::vector<prism::Set
         }
         if (!known) {
             entry.decls.push_back(decl);
-            auto cvars = Ship::Context::GetInstance()->GetConsoleVariables();
+            auto cvars = gfx->mConsoleVariable;
             const std::string key = ShaderSettingCVarKey(entry, decl.var);
             std::array<float, 4> v = { 0.0f, 0.0f, 0.0f, 0.0f };
             if (decl.type == "color") {
@@ -4576,7 +4576,7 @@ void Interpreter::SetShaderSettingValue(size_t shaderId, const std::string& var,
             break;
         }
     }
-    auto cvars = Ship::Context::GetInstance()->GetConsoleVariables();
+    auto cvars = mConsoleVariable;
     const std::string key = ShaderSettingCVarKey(it->second, var);
     if (decl != nullptr && decl->type == "color") {
         static const char* sSuffix[3] = { ".R", ".G", ".B" };
@@ -4788,8 +4788,7 @@ bool gfx_dl_otr_hash_handler_custom(F3DGfx** cmd0) {
         if (gfx != 0) {
             g_exec_stack.call(cmd, gfx);
             Interpreter* interp = mInstance.lock().get();
-            const char* dlPath =
-                Ship::Context::GetInstance()->GetResourceManager()->GetArchiveManager()->HashToCString(hash);
+            const char* dlPath = sResourceManager->GetArchiveManager()->HashToCString(hash);
             if (dlPath != nullptr) {
                 interp->ApplyMaterialShader(dlPath);
             }
@@ -6345,8 +6344,7 @@ void Interpreter::Run(Gfx* commands, const std::unordered_map<Mtx*, MtxF>& mtx_r
 
     // Cache the RGB-dither toggle once per frame; the per-draw uniform block reads
     // mRgbDitherEnabled (hot path, so no CVar lookup there).
-    mRgbDitherEnabled =
-        Ship::Context::GetInstance()->GetConsoleVariables()->GetInteger("gEnhancements.Graphics.DitherNoise", 0) != 0;
+    mRgbDitherEnabled = mConsoleVariable->GetInteger("gEnhancements.Graphics.DitherNoise", 0) != 0;
 
     // Engine built-in custom uniform registers (see CustomUniforms):
     // [0] = frame count / elapsed seconds / delta seconds, [1] = fb dimensions
