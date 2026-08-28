@@ -1,5 +1,9 @@
 #include "fast/Fast3dGui.h"
 
+#ifdef ENABLE_VULKAN
+#include "fast/backends/gfx_vulkan.h"
+#endif
+
 #include "fast/Fast3dWindow.h"
 #include "ship/core/Context.h"
 #include "ship/config/ConsoleVariable.h"
@@ -91,7 +95,8 @@ void Fast3dGui::HandleWindowEvents(Fast::WindowEvent event) {
 
     switch (window->GetWindowBackend()) {
         case WindowBackend::FAST3D_SDL_OPENGL:
-        case WindowBackend::FAST3D_SDL_METAL: {
+        case WindowBackend::FAST3D_SDL_METAL:
+        case WindowBackend::FAST3D_SDL_VULKAN: {
             ImGui_ImplSDL3_ProcessEvent(static_cast<const SDL_Event*>(event.Sdl.Event));
 #if defined(__ANDROID__) || defined(__IOS__)
             SDL_Window* sdlWindow = window->GetWindowBackend() == WindowBackend::FAST3D_SDL_OPENGL
@@ -133,6 +138,15 @@ void Fast3dGui::ImGuiWMInit() {
             ImGui_ImplSDL3_InitForMetal(static_cast<SDL_Window*>(mImpl.Metal.Window));
             break;
 #endif
+#ifdef ENABLE_VULKAN
+        case WindowBackend::FAST3D_SDL_VULKAN:
+            SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "1");
+            if (mConsoleVariables->GetInteger(CVAR_ALLOW_BACKGROUND_INPUTS, 1)) {
+                SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+            }
+            ImGui_ImplSDL3_InitForVulkan(static_cast<SDL_Window*>(mImpl.Vulkan.Window));
+            break;
+#endif
 #if defined(ENABLE_DX11) || defined(ENABLE_DX12)
         case WindowBackend::FAST3D_DXGI_DX11:
             ImGui_ImplWin32_Init(mImpl.Dx11.Window);
@@ -156,6 +170,11 @@ void Fast3dGui::ImGuiWMShutdown() {
 #endif
 #if __APPLE__
         case WindowBackend::FAST3D_SDL_METAL:
+            ImGui_ImplSDL3_Shutdown();
+            break;
+#endif
+#ifdef ENABLE_VULKAN
+        case WindowBackend::FAST3D_SDL_VULKAN:
             ImGui_ImplSDL3_Shutdown();
             break;
 #endif
@@ -192,6 +211,14 @@ void Fast3dGui::ImGuiBackendInit() {
         }
 #endif
 
+#ifdef ENABLE_VULKAN
+        case WindowBackend::FAST3D_SDL_VULKAN: {
+            GfxRenderingAPIVK* api = (GfxRenderingAPIVK*)mInterpreter.lock()->GetCurrentRenderingAPI();
+            api->VulkanInit(static_cast<SDL_Window*>(mImpl.Vulkan.Window));
+            break;
+        }
+#endif
+
 #ifdef ENABLE_DX11
         case WindowBackend::FAST3D_DXGI_DX11:
             ImGui_ImplDX11_Init(static_cast<ID3D11Device*>(mImpl.Dx11.Device),
@@ -215,6 +242,13 @@ void Fast3dGui::ImGuiBackendShutdown() {
         case WindowBackend::FAST3D_SDL_METAL:
             ImGui_ImplMetal_Shutdown();
             break;
+#endif
+#ifdef ENABLE_VULKAN
+        case WindowBackend::FAST3D_SDL_VULKAN: {
+            GfxRenderingAPIVK* api = (GfxRenderingAPIVK*)mInterpreter.lock()->GetCurrentRenderingAPI();
+            api->ShutdownImGui();
+            break;
+        }
 #endif
 #if defined(ENABLE_DX11) || defined(ENABLE_DX12)
         case WindowBackend::FAST3D_DXGI_DX11:
@@ -248,6 +282,13 @@ void Fast3dGui::ImGuiBackendNewFrame() {
             break;
         }
 #endif
+#ifdef ENABLE_VULKAN
+        case WindowBackend::FAST3D_SDL_VULKAN: {
+            GfxRenderingAPIVK* api = (GfxRenderingAPIVK*)mInterpreter.lock()->GetCurrentRenderingAPI();
+            api->NewFrame();
+            break;
+        }
+#endif
         default:
             break;
     }
@@ -258,6 +299,7 @@ void Fast3dGui::ImGuiWMNewFrame() {
     switch (window->GetWindowBackend()) {
         case WindowBackend::FAST3D_SDL_OPENGL:
         case WindowBackend::FAST3D_SDL_METAL:
+        case WindowBackend::FAST3D_SDL_VULKAN:
             ImGui_ImplSDL3_NewFrame();
             break;
 #ifdef ENABLE_DX11
@@ -294,6 +336,14 @@ void Fast3dGui::ImGuiRenderDrawData(ImDrawData* data) {
 #ifdef __APPLE__
         case WindowBackend::FAST3D_SDL_METAL: {
             GfxRenderingAPIMetal* api = (GfxRenderingAPIMetal*)mInterpreter.lock()->GetCurrentRenderingAPI();
+            api->RenderDrawData(data);
+            break;
+        }
+#endif
+
+#ifdef ENABLE_VULKAN
+        case WindowBackend::FAST3D_SDL_VULKAN: {
+            GfxRenderingAPIVK* api = (GfxRenderingAPIVK*)mInterpreter.lock()->GetCurrentRenderingAPI();
             api->RenderDrawData(data);
             break;
         }
