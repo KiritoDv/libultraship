@@ -20,6 +20,7 @@ class ResourceManager;
 } // namespace Ship
 
 static constexpr size_t kMaxVertexBufferPoolSize = 3;
+static constexpr size_t kVertexBufferBaseSize = 256 * 32 * 3 * sizeof(float) * 50;
 static constexpr size_t METAL_MAX_MULTISAMPLE_SAMPLE_COUNT = 8;
 static constexpr size_t MAX_PIXEL_DEPTH_COORDS = 1024;
 
@@ -54,7 +55,7 @@ static size_t cantor(uint64_t a, uint64_t b) {
 }
 
 struct hash_pair_shader_ids {
-    size_t operator()(const std::pair<uint64_t, uint32_t>& p) const {
+    size_t operator()(const std::pair<uint64_t, uint64_t>& p) const {
         auto value1 = p.first;
         auto value2 = p.second;
         return cantor(value1, value2);
@@ -70,6 +71,8 @@ struct ShaderProgramMetal {
     uint8_t numInputs;
     uint8_t numFloats;
     bool usedTextures[SHADER_MAX_TEXTURES];
+    // Vertex shader consumes the LightUniforms buffer (lighting and/or texgen)
+    bool usedLighting = false;
     bool markedForDeletion = false;
 
     // hashed by msaa_level
@@ -83,7 +86,10 @@ struct TextureDataMetal {
     uint32_t width;
     uint32_t height;
     uint32_t filtering;
+    // Total mip levels uploaded (0/1 = base level only)
+    uint32_t mip_levels;
     bool linear_filtering;
+    bool auto_mipmaps;
 };
 
 struct FramebufferMetal {
@@ -112,6 +118,7 @@ struct FramebufferMetal {
     int8_t mLastDepthTest = -1;
     int8_t mLastDepthMask = -1;
     int8_t mLastZmodeDecal = -1;
+    int8_t mLastStrictDecal = -1;
 
     // When true, command buffer is created on the readback queue (no enqueue ordering).
     // First ReadFramebufferToCPU returns zeros and flips this; real data from frame 2+.
@@ -126,6 +133,18 @@ struct FrameUniforms {
 struct DrawUniforms {
     simd::int1 textureFiltering[SHADER_MAX_TEXTURES];
     simd::float1 prim_depth;
+    simd::float1 lod_max;
+    simd::float4 inputs[6];
+    simd::float4 fog_color;
+    simd::float4 grayscale_color;
+    simd::float4 uv_transform[2];
+    simd::float4 texture_clamp[2];
+    simd::float4 fog_params;
+    simd::float4 palette_params[2];
+    simd::float4 lod_params;
+    // Game-bindable register file; lockstep with the metal template's DrawUniforms
+    simd::float4 uCustom[GFX_NUM_CUSTOM_UNIFORMS];
+    simd::float4 debug_tint; // HD-replacement debug tint: rgb = color, a = mix amount
 };
 
 struct CoordUniforms {
@@ -149,10 +168,14 @@ class GfxRenderingAPIMetal final : public GfxRenderingAPI {
     uint32_t NewTexture() override;
     void SelectTexture(int tile, uint32_t textureId) override;
     void UploadTexture(const uint8_t* rgba32Buf, uint32_t width, uint32_t height) override;
+    void UploadTextureMip(const uint8_t* rgba32Buf, uint32_t width, uint32_t height, uint32_t level,
+                          uint32_t totalLevels) override;
     void SetSamplerParameters(int sampler, bool linear_filter, uint32_t cms, uint32_t cmt) override;
     void SetDepthTestAndMask(bool depth_test, bool z_upd) override;
     void SetCurrentPrimDepth(float depth) override;
+    void SetCurrentMaxLod(float maxLod) override;
     void SetZmodeDecal(bool decal) override;
+    void SetStrictDecal(bool on) override;
     void SetViewport(int x, int y, int width, int height) override;
     void SetScissor(int x, int y, int width, int height) override;
     void SetUseAlpha(bool useAlpha) override;
@@ -179,7 +202,6 @@ class GfxRenderingAPIMetal final : public GfxRenderingAPI {
     void DeleteTexture(uint32_t texId) override;
     void SetTextureFilter(FilteringMode mode) override;
     FilteringMode GetTextureFilter() override;
-    void SetSrgbMode() override;
     ImTextureID GetTextureById(int id) override;
 
     void NewFrame();
@@ -199,7 +221,10 @@ class GfxRenderingAPIMetal final : public GfxRenderingAPI {
 
     int mCurrentVertexBufferPoolIndex = 0;
     MTL::Buffer* mVertexBufferPool[kMaxVertexBufferPoolSize];
-    std::unordered_map<std::pair<uint64_t, uint32_t>, struct ShaderProgramMetal, hash_pair_shader_ids>
+    size_t mVertexBufferCapacity[kMaxVertexBufferPoolSize];
+    size_t mVertexBufferPeakThisFrame = 0;
+    size_t mVertexBufferPeakLastFrame = 0;
+    std::unordered_map<std::pair<uint64_t, uint64_t>, struct ShaderProgramMetal, hash_pair_shader_ids>
         mShaderProgramPool;
 
     std::vector<struct TextureDataMetal> mTextures;
@@ -244,6 +269,7 @@ class GfxRenderingAPIMetal final : public GfxRenderingAPI {
     int mCurrentFramebuffer;
     size_t mCurrentVertexBufferOffset;
     FilteringMode mCurrentFilterMode = FILTER_THREE_POINT;
+    bool mLodMaxDirty = true;
 
     bool mNonUniformThreadgroupSupported;
 };

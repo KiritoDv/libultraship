@@ -23,7 +23,11 @@
 function(lus_setup_tcc_runtime TARGET_NAME)
     cmake_parse_arguments(PARSE_ARGV 1 LUS_TCC "" "RESOURCES_DIR" "")
 
+<<<<<<< HEAD
     if(NOT ENABLE_SCRIPTING)
+=======
+    if(NOT ENABLE_SCRIPTING OR NOT ENABLE_TCC_COMPILER)
+>>>>>>> fix/new-renderer/ios
         return()
     endif()
 

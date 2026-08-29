@@ -7,6 +7,9 @@
 #include "ship/config/Config.h"
 #include "ship/resource/ResourceManager.h"
 #include "fast/backends/gfx_metal.h"
+#ifdef ENABLE_VULKAN
+#include "fast/backends/gfx_vulkan.h"
+#endif
 #include "fast/interpreter.h"
 #include "fast/backends/gfx_rendering_api.h"
 #include "fast/resource/type/Texture.h"
@@ -80,11 +83,41 @@ void Fast3dGui::HandleWindowEvents(Fast::WindowEvent event) {
     switch (window->GetWindowBackend()) {
         case WindowBackend::FAST3D_SDL_OPENGL:
         case WindowBackend::FAST3D_SDL_METAL:
+        case WindowBackend::FAST3D_SDL_VULKAN: {
+#ifdef __IOS__
+            // SDL reports coordinates in points; ImGui runs in pixels here.
+            if (window->GetWindowBackend() == WindowBackend::FAST3D_SDL_METAL && mImpl.Metal.Renderer != nullptr) {
+                SDL_Event scaled = *static_cast<const SDL_Event*>(event.Sdl.Event);
+                int ww = 0, wh = 0, pw = 0, ph = 0;
+                SDL_GetWindowSize(static_cast<SDL_Window*>(mImpl.Metal.Window), &ww, &wh);
+                SDL_GetRendererOutputSize(mImpl.Metal.Renderer, &pw, &ph);
+                const float sx = ww > 0 ? (float)pw / (float)ww : 1.0f;
+                const float sy = wh > 0 ? (float)ph / (float)wh : 1.0f;
+                switch (scaled.type) {
+                    case SDL_MOUSEMOTION:
+                        scaled.motion.x = (Sint32)(scaled.motion.x * sx);
+                        scaled.motion.y = (Sint32)(scaled.motion.y * sy);
+                        break;
+                    case SDL_MOUSEBUTTONDOWN:
+                    case SDL_MOUSEBUTTONUP:
+                        scaled.button.x = (Sint32)(scaled.button.x * sx);
+                        scaled.button.y = (Sint32)(scaled.button.y * sy);
+                        break;
+                    default:
+                        break;
+                }
+                ImGui_ImplSDL2_ProcessEvent(&scaled);
+            } else {
+                ImGui_ImplSDL2_ProcessEvent(static_cast<const SDL_Event*>(event.Sdl.Event));
+            }
+#else
             ImGui_ImplSDL2_ProcessEvent(static_cast<const SDL_Event*>(event.Sdl.Event));
+#endif
 #if defined(__ANDROID__) || defined(__IOS__)
             Ship::Mobile::ImGuiProcessEvent(ImGui::GetIO().WantTextInput);
 #endif
             break;
+        }
 #ifdef ENABLE_DX11
         case WindowBackend::FAST3D_DXGI_DX11:
             ImGui_ImplWin32_WndProcHandler(static_cast<HWND>(event.Win32.Handle), event.Win32.Msg, event.Win32.Param1,
@@ -114,7 +147,17 @@ void Fast3dGui::ImGuiWMInit() {
             if (mConsoleVariables->GetInteger(CVAR_ALLOW_BACKGROUND_INPUTS, 1)) {
                 SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
             }
-            ImGui_ImplSDL2_InitForMetal(static_cast<SDL_Window*>(mImpl.Metal.Window));
+            // Pass the renderer so the backend derives DisplayFramebufferScale from it.
+            ImGui_ImplSDL2_InitForSDLRenderer(static_cast<SDL_Window*>(mImpl.Metal.Window), mImpl.Metal.Renderer);
+            break;
+#endif
+#ifdef ENABLE_VULKAN
+        case WindowBackend::FAST3D_SDL_VULKAN:
+            SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "1");
+            if (mConsoleVariables->GetInteger(CVAR_ALLOW_BACKGROUND_INPUTS, 1)) {
+                SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+            }
+            ImGui_ImplSDL2_InitForVulkan(static_cast<SDL_Window*>(mImpl.Vulkan.Window));
             break;
 #endif
 #if defined(ENABLE_DX11) || defined(ENABLE_DX12)
@@ -137,6 +180,11 @@ void Fast3dGui::ImGuiWMShutdown() {
 #endif
 #if __APPLE__
         case WindowBackend::FAST3D_SDL_METAL:
+            ImGui_ImplSDL2_Shutdown();
+            break;
+#endif
+#ifdef ENABLE_VULKAN
+        case WindowBackend::FAST3D_SDL_VULKAN:
             ImGui_ImplSDL2_Shutdown();
             break;
 #endif
@@ -173,6 +221,14 @@ void Fast3dGui::ImGuiBackendInit() {
         }
 #endif
 
+#ifdef ENABLE_VULKAN
+        case WindowBackend::FAST3D_SDL_VULKAN: {
+            GfxRenderingAPIVK* api = (GfxRenderingAPIVK*)mInterpreter.lock()->GetCurrentRenderingAPI();
+            api->VulkanInit(static_cast<SDL_Window*>(mImpl.Vulkan.Window));
+            break;
+        }
+#endif
+
 #ifdef ENABLE_DX11
         case WindowBackend::FAST3D_DXGI_DX11:
             ImGui_ImplDX11_Init(static_cast<ID3D11Device*>(mImpl.Dx11.Device),
@@ -196,6 +252,13 @@ void Fast3dGui::ImGuiBackendShutdown() {
         case WindowBackend::FAST3D_SDL_METAL:
             ImGui_ImplMetal_Shutdown();
             break;
+#endif
+#ifdef ENABLE_VULKAN
+        case WindowBackend::FAST3D_SDL_VULKAN: {
+            GfxRenderingAPIVK* api = (GfxRenderingAPIVK*)mInterpreter.lock()->GetCurrentRenderingAPI();
+            api->ShutdownImGui();
+            break;
+        }
 #endif
 #if defined(ENABLE_DX11) || defined(ENABLE_DX12)
         case WindowBackend::FAST3D_DXGI_DX11:
@@ -229,6 +292,13 @@ void Fast3dGui::ImGuiBackendNewFrame() {
             break;
         }
 #endif
+#ifdef ENABLE_VULKAN
+        case WindowBackend::FAST3D_SDL_VULKAN: {
+            GfxRenderingAPIVK* api = (GfxRenderingAPIVK*)mInterpreter.lock()->GetCurrentRenderingAPI();
+            api->NewFrame();
+            break;
+        }
+#endif
         default:
             break;
     }
@@ -239,7 +309,21 @@ void Fast3dGui::ImGuiWMNewFrame() {
     switch (window->GetWindowBackend()) {
         case WindowBackend::FAST3D_SDL_OPENGL:
         case WindowBackend::FAST3D_SDL_METAL:
+        case WindowBackend::FAST3D_SDL_VULKAN:
             ImGui_ImplSDL2_NewFrame();
+#ifdef __IOS__
+            // Run ImGui in drawable-pixel space (the rest of the engine works in
+            // pixels); touch input is scaled to match in HandleWindowEvents.
+            if (window->GetWindowBackend() == WindowBackend::FAST3D_SDL_METAL && mImpl.Metal.Renderer != nullptr) {
+                int pw = 0, ph = 0;
+                SDL_GetRendererOutputSize(mImpl.Metal.Renderer, &pw, &ph);
+                if (pw > 0 && ph > 0) {
+                    ImGuiIO& io = ImGui::GetIO();
+                    io.DisplaySize = ImVec2((float)pw, (float)ph);
+                    io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
+                }
+            }
+#endif
             break;
 #ifdef ENABLE_DX11
         case WindowBackend::FAST3D_DXGI_DX11:
@@ -263,6 +347,14 @@ void Fast3dGui::ImGuiRenderDrawData(ImDrawData* data) {
 #ifdef __APPLE__
         case WindowBackend::FAST3D_SDL_METAL: {
             GfxRenderingAPIMetal* api = (GfxRenderingAPIMetal*)mInterpreter.lock()->GetCurrentRenderingAPI();
+            api->RenderDrawData(data);
+            break;
+        }
+#endif
+
+#ifdef ENABLE_VULKAN
+        case WindowBackend::FAST3D_SDL_VULKAN: {
+            GfxRenderingAPIVK* api = (GfxRenderingAPIVK*)mInterpreter.lock()->GetCurrentRenderingAPI();
             api->RenderDrawData(data);
             break;
         }

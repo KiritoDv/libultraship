@@ -25,12 +25,23 @@
 #include "SDL_opengl.h"
 #elif __APPLE__
 #include <SDL.h>
+#ifdef ENABLE_VULKAN
+#include <SDL_vulkan.h>
+#endif
 #include "fast/backends/gfx_metal.h"
 #include "ship/utils/macUtils.h"
 #else
 #include <SDL2/SDL.h>
+#ifdef ENABLE_VULKAN
+#include <SDL2/SDL_vulkan.h>
+#endif
 #define GL_GLEXT_PROTOTYPES 1
 #include <SDL2/SDL_opengles2.h>
+#endif
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#include <emscripten/html5.h>
 #endif
 
 #include "ship/window/gui/Gui.h"
@@ -240,7 +251,7 @@ void GfxWindowBackendSDL2::SetFullscreenImpl(bool on, bool call_callback) {
         }
     }
 
-#if defined(__APPLE__)
+#if defined(__APPLE__) && !defined(__IOS__)
     // Implement fullscreening with native macOS APIs
     if (on != isNativeMacOSFullscreenActive(mWnd)) {
         toggleNativeMacOSFullscreen(mWnd);
@@ -325,6 +336,12 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
     mWindowWidth = width;
     mWindowHeight = height;
 
+#if defined(__APPLE__) && !defined(__IOS__)
+    // Keep running at full speed (and audio playing) while unfocused/hidden by opting
+    // out of App Nap, which otherwise throttles the whole process in the background.
+    disableMacOSAppNap();
+#endif
+
 #if SDL_VERSION_ATLEAST(2, 24, 0)
     /* fix DPI scaling issues on Windows */
     SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS, "permonitorv2");
@@ -334,17 +351,22 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
 
     SDL_EventState(SDL_DROPFILE, SDL_ENABLE);
 
-#if defined(__APPLE__)
-    bool use_opengl = strcmp(gfxApiName, "OpenGL") == 0;
+#ifdef ENABLE_VULKAN
+    bool use_vulkan = strcmp(gfxApiName, "Vulkan") == 0;
 #else
-    constexpr bool use_opengl = true;
+    constexpr bool use_vulkan = false;
+#endif
+#if defined(__APPLE__)
+    bool use_opengl = !use_vulkan && strcmp(gfxApiName, "OpenGL") == 0;
+#else
+    bool use_opengl = !use_vulkan;
 #endif
 
     if (use_opengl) {
         SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
         SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
         SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    } else {
+    } else if (!use_vulkan) {
         SDL_SetHint(SDL_HINT_RENDER_DRIVER, "metal");
     }
 
@@ -353,6 +375,10 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+#elif defined(USE_OPENGLES)
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
 #endif
 
 #ifdef _WIN32
@@ -376,19 +402,42 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
     char title[512];
     int len = snprintf(title, sizeof(title), "%s (%s)", gameName, gfxApiName);
 
-#ifdef __IOS__
-    Uint32 flags = SDL_WINDOW_BORDERLESS | SDL_WINDOW_SHOWN;
+#if defined(__IOS__) || defined(__ANDROID__)
+    Uint32 flags = SDL_WINDOW_BORDERLESS | SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI;
 #else
     Uint32 flags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
 #endif
 
     if (use_opengl) {
         flags = flags | SDL_WINDOW_OPENGL;
+    } else if (use_vulkan) {
+        flags = flags | SDL_WINDOW_VULKAN;
     } else {
         flags = flags | SDL_WINDOW_METAL;
     }
 
+#ifdef __EMSCRIPTEN__
+    double canvasW = 0.0, canvasH = 0.0;
+    emscripten_get_element_css_size("#canvas", &canvasW, &canvasH);
+    if (canvasW > 0 && canvasH > 0) {
+        mWindowWidth = (int)canvasW;
+        mWindowHeight = (int)canvasH;
+    }
+#endif
     mWnd = SDL_CreateWindow(title, posX, posY, mWindowWidth, mWindowHeight, flags);
+#ifdef __EMSCRIPTEN__
+    em_ui_callback_func onCanvasResize = [](int, const EmscriptenUiEvent*, void* userData) -> EM_BOOL {
+        auto backend = static_cast<GfxWindowBackendSDL2*>(userData);
+        double w = 0.0;
+        double h = 0.0;
+        emscripten_get_element_css_size("#canvas", &w, &h);
+        if (w > 0 && h > 0 && backend->mWnd != nullptr) {
+            SDL_SetWindowSize(backend->mWnd, (int)w, (int)h);
+        }
+        return EM_TRUE;
+    };
+    emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, this, EM_FALSE, onCanvasResize);
+#endif
 #ifdef _WIN32
     // Get Windows window handle and use it to subclass the window procedure.
     // Needed to circumvent SDLs DPI scaling problems under windows (original does only scale *sometimes*).
@@ -420,6 +469,14 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
         SDL_GL_SetSwapInterval(mVsyncEnabled ? 1 : 0);
 
         window_impl.Opengl = { mWnd, mCtx };
+    } else if (use_vulkan) {
+#ifdef ENABLE_VULKAN
+        if (startFullScreen) {
+            SetFullscreenImpl(true, false);
+        }
+        SDL_Vulkan_GetDrawableSize(mWnd, &mWindowWidth, &mWindowHeight);
+        window_impl.Vulkan = { mWnd };
+#endif
     } else {
         uint32_t flags = SDL_RENDERER_ACCELERATED;
         if (mVsyncEnabled) {
@@ -528,7 +585,12 @@ void GfxWindowBackendSDL2::SetMouseCallbacks(bool (*onMouseButtonDown)(int btn),
 
 void GfxWindowBackendSDL2::GetDimensions(uint32_t* width, uint32_t* height, int32_t* posX, int32_t* posY) {
 #ifdef __APPLE__
-    SDL_GetWindowSize(mWnd, static_cast<int*>((void*)width), static_cast<int*>((void*)height));
+    if (mRenderer != nullptr) {
+        // Metal: drawable pixels, not window points.
+        SDL_GetRendererOutputSize(mRenderer, static_cast<int*>((void*)width), static_cast<int*>((void*)height));
+    } else {
+        SDL_GetWindowSize(mWnd, static_cast<int*>((void*)width), static_cast<int*>((void*)height));
+    }
 #else
     SDL_GL_GetDrawableSize(mWnd, static_cast<int*>((void*)width), static_cast<int*>((void*)height));
 #endif
@@ -636,7 +698,12 @@ void GfxWindowBackendSDL2::HandleSingleEvent(SDL_Event& event) {
             switch (event.window.event) {
                 case SDL_WINDOWEVENT_SIZE_CHANGED:
 #ifdef __APPLE__
-                    SDL_GetWindowSize(mWnd, &mWindowWidth, &mWindowHeight);
+                    if (mRenderer != nullptr) {
+                        // Metal: drawable pixels, not window points.
+                        SDL_GetRendererOutputSize(mRenderer, &mWindowWidth, &mWindowHeight);
+                    } else {
+                        SDL_GetWindowSize(mWnd, &mWindowWidth, &mWindowHeight);
+                    }
 #else
                     SDL_GL_GetDrawableSize(mWnd, &mWindowWidth, &mWindowHeight);
 #endif
@@ -670,7 +737,7 @@ void GfxWindowBackendSDL2::HandleEvents() {
     }
 
     // resync fullscreen state
-#ifdef __APPLE__
+#if defined(__APPLE__) && !defined(__IOS__)
     auto nextFullscreenState = isNativeMacOSFullscreenActive(mWnd);
     if (mFullScreen != nextFullscreenState) {
         mFullScreen = nextFullscreenState;
@@ -682,6 +749,21 @@ void GfxWindowBackendSDL2::HandleEvents() {
 }
 
 bool GfxWindowBackendSDL2::IsFrameReady() {
+    return true;
+}
+
+bool GfxWindowBackendSDL2::IsWindowVisible() {
+    const uint32_t flags = SDL_GetWindowFlags(mWnd);
+    if (flags & (SDL_WINDOW_MINIMIZED | SDL_WINDOW_HIDDEN)) {
+        return false;
+    }
+#if defined(__APPLE__) && !defined(__IOS__)
+    // SDL2 has no occlusion flag; query Cocoa directly. A fully-covered window stops
+    // being composited, which stalls Metal's drawable acquisition (see isWindowOccluded).
+    if (isWindowOccluded(mWnd)) {
+        return false;
+    }
+#endif
     return true;
 }
 

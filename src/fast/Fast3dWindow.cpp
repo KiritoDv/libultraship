@@ -1,5 +1,8 @@
 #include "fast/Fast3dWindow.h"
 
+#include <thread>
+#include <chrono>
+
 #include "ship/Context.h"
 #include "ship/config/Config.h"
 #include "ship/controller/controldeck/ControlDeck.h"
@@ -11,6 +14,7 @@
 #include "fast/backends/gfx_dxgi.h"
 #include "fast/backends/gfx_opengl.h"
 #include "fast/backends/gfx_metal.h"
+#include "fast/backends/gfx_vulkan.h"
 #include "fast/backends/gfx_direct3d_common.h"
 #include "fast/backends/gfx_direct3d11.h"
 #include "fast/backends/gfx_window_manager_api.h"
@@ -43,7 +47,14 @@ Fast3dWindow::Fast3dWindow(std::shared_ptr<Ship::Gui> gui, std::shared_ptr<FastM
         AddAvailableWindowBackend(WindowBackend::FAST3D_SDL_METAL);
     }
 #endif
+#ifdef ENABLE_VULKAN
+    if (Vulkan_IsSupported()) {
+        AddAvailableWindowBackend(WindowBackend::FAST3D_SDL_VULKAN);
+    }
+#endif
+#ifdef ENABLE_OPENGL
     AddAvailableWindowBackend(WindowBackend::FAST3D_SDL_OPENGL);
+#endif
 }
 
 Fast3dWindow::Fast3dWindow(std::shared_ptr<Ship::Gui> gui, std::shared_ptr<Ship::Config> config,
@@ -190,6 +201,15 @@ void Fast3dWindow::InitWindowManager() {
                                                      GetContext()->GetChildren().GetFirst<Ship::ResourceManager>());
             break;
 #endif
+#ifdef ENABLE_VULKAN
+        case WindowBackend::FAST3D_SDL_VULKAN:
+            mWindowManagerApi =
+                new GfxWindowBackendSDL2(GetConfig(), GetContext()->GetChildren().GetFirst<Ship::FileDrop>(),
+                                         GetConsoleVariables(), std::dynamic_pointer_cast<Fast::Fast3dGui>(GetGui()));
+            mRenderingApi = new GfxRenderingAPIVK(GetConsoleVariables(),
+                                                  GetContext()->GetChildren().GetFirst<Ship::ResourceManager>());
+            break;
+#endif
         default:
             SPDLOG_ERROR("Could not load the correct rendering backend");
             break;
@@ -198,10 +218,6 @@ void Fast3dWindow::InitWindowManager() {
 
 void Fast3dWindow::SetTextureFilter(FilteringMode filteringMode) {
     mInterpreter->GetCurrentRenderingAPI()->SetTextureFilter(filteringMode);
-}
-
-void Fast3dWindow::EnableSRGBMode() {
-    mInterpreter->mRapi->SetSrgbMode();
 }
 
 void Fast3dWindow::SetRendererUCode(UcodeHandlers ucode) {
@@ -228,9 +244,20 @@ bool Fast3dWindow::IsFrameReady() {
     return mWindowManagerApi->IsFrameReady();
 }
 
-bool Fast3dWindow::DrawAndRunGraphicsCommands(Gfx* commands, const std::unordered_map<Mtx*, MtxF>& mtxReplacements) {
+bool Fast3dWindow::DrawAndRunGraphicsCommands(Gfx* commands, const std::unordered_map<Mtx*, MtxF>& mtxReplacements,
+                                              const std::unordered_map<Gfx*, Gfx*>& dlReplacements) {
     // Skip dropped frames
     if (!IsFrameReady()) {
+        return false;
+    }
+
+    // When the window isn't being displayed (minimized/occluded), skip the entire
+    // render + present. Otherwise acquiring a backend drawable can block on the
+    // compositor (Metal's nextDrawable stalls ~1s per frame while occluded), which
+    // looks like the game lagging in the background. Game logic has already run for
+    // this tick; we just don't draw. Yield briefly so the loop doesn't busy-spin.
+    if (!mWindowManagerApi->IsWindowVisible()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(8));
         return false;
     }
 
@@ -242,7 +269,7 @@ bool Fast3dWindow::DrawAndRunGraphicsCommands(Gfx* commands, const std::unordere
     // Setup game framebuffers to match available window space
     mInterpreter->StartFrame();
     // Execute the games gfx commands
-    mInterpreter->Run(commands, mtxReplacements);
+    mInterpreter->Run(commands, mtxReplacements, dlReplacements);
     // Renders the game frame buffer to the final window and finishes the GUI
     gui->EndDraw();
     // Finalize swap buffers
@@ -462,6 +489,10 @@ std::string Fast3dWindow::GetWindowBackendName() {
 #ifdef __APPLE__
         case WindowBackend::FAST3D_SDL_METAL:
             return "Metal";
+#endif
+#ifdef ENABLE_VULKAN
+        case WindowBackend::FAST3D_SDL_VULKAN:
+            return "Vulkan";
 #endif
         default:
             return "";
