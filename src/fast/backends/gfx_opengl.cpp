@@ -1125,9 +1125,8 @@ void* GfxRenderingAPIOGL::GetFramebufferTextureId(int fb_id) {
     return (void*)(uintptr_t)mFrameBuffers[fb_id].clrbuf;
 }
 
-void GfxRenderingAPIOGL::SelectTextureFb(int fb_id) {
+void GfxRenderingAPIOGL::SelectTextureFb(int fb_id, int tile) {
     // glDisable(GL_DEPTH_TEST);
-    int tile = 0;
     GLuint texId = mFrameBuffers[fb_id].clrbuf;
     // Ensure the textures metadata vector can hold this FB texture handle.
     // FB color buffers are created outside NewTexture(), so the vector may

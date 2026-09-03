@@ -1301,7 +1301,7 @@ void* GfxRenderingAPIMetal::GetFramebufferTextureId(int fb_id) {
     return (void*)mTextures[mFramebuffers[fb_id].mTextureId].texture;
 }
 
-void GfxRenderingAPIMetal::SelectTextureFb(int fb_id) {
+void GfxRenderingAPIMetal::SelectTextureFb(int fb_id, int tile) {
     // If the source framebuffer's render encoder is still open, Metal does not
     // automatically synchronize the texture for reading in another encoder —
     // sampling it yields garbage (undefined) data.  End the encoder to finalise
@@ -1354,7 +1354,6 @@ void GfxRenderingAPIMetal::SelectTextureFb(int fb_id) {
         mCustomUniformsDirty = true;
     }
 
-    int tile = 0;
     SelectTexture(tile, src.mTextureId);
 }
 

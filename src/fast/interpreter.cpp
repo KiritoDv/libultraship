@@ -2007,7 +2007,7 @@ void Interpreter::ImportTexture(int i, int tile, bool importReplacement) {
         auto fbIt = mFbTextures.find((uintptr_t)origAddr);
         if (fbIt != mFbTextures.end()) {
             Flush();
-            mRapi->SelectTextureFb(fbIt->second);
+            mRapi->SelectTextureFb(fbIt->second, i);
             mRdp->textures_changed[i] = false;
             return;
         }
@@ -4713,7 +4713,7 @@ int Interpreter::RunPostPasses() {
         mRenderingState.scissor = {};
 
         // Previous image on tile 0
-        mRapi->SelectTextureFb(cur);
+        mRapi->SelectTextureFb(cur, 0);
         mRdp->textures_changed[0] = false;
         mRdp->textures_changed[1] = false;
 
@@ -5670,7 +5670,7 @@ bool gfx_set_timg_fb_handler_custom(F3DGfx** cmd0) {
     F3DGfx* cmd = *cmd0;
 
     gfx->Flush();
-    gfx->mRapi->SelectTextureFb((uint32_t)cmd->words.w1);
+    gfx->mRapi->SelectTextureFb((uint32_t)cmd->words.w1, 0);
     gfx->mRdp->textures_changed[0] = false;
     gfx->mRdp->textures_changed[1] = false;
     return false;
