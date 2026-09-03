@@ -1354,6 +1354,7 @@ void GfxRenderingAPIMetal::SelectTextureFb(int fb_id, int tile) {
         mCustomUniformsDirty = true;
     }
 
+    mTextures[src.mTextureId].filtering = FILTER_LINEAR;
     SelectTexture(tile, src.mTextureId);
 }
 

@@ -1134,6 +1134,9 @@ void GfxRenderingAPIOGL::SelectTextureFb(int fb_id, int tile) {
     if (texId >= textures.size()) {
         textures.resize((size_t)texId + 1);
     }
+    textures[texId].width = (uint16_t)mFrameBuffers[fb_id].width;
+    textures[texId].height = (uint16_t)mFrameBuffers[fb_id].height;
+    textures[texId].filtering = FILTER_LINEAR;
     SelectTexture(tile, texId);
 }
 

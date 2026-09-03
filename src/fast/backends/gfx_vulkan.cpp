@@ -2379,6 +2379,7 @@ void* GfxRenderingAPIVK::GetFramebufferTextureId(int fbId) {
 }
 
 void GfxRenderingAPIVK::SelectTextureFb(int fbId, int tile) {
+    mTextures[mFramebuffers[fbId].mTextureId].filtering = FILTER_LINEAR;
     SelectTexture(tile, mFramebuffers[fbId].mTextureId);
 }
 
