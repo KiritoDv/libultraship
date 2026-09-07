@@ -44,6 +44,14 @@ function(lus_setup_tcc_runtime TARGET_NAME)
     #  Windows (MSVC)                                                      #
     # ------------------------------------------------------------------ #
     if(MSVC)
+        set(_tcc_win32_runtime_objs
+            "${tinycc_SOURCE_DIR}/win32/lib/bt-log.o"
+            "${tinycc_SOURCE_DIR}/win32/lib/bt-exe.o"
+            "${tinycc_SOURCE_DIR}/win32/lib/bt-dll.o"
+            "${tinycc_SOURCE_DIR}/win32/lib/bcheck.o"
+            "${tinycc_SOURCE_DIR}/win32/lib/runmain.o"
+        )
+
         # Bundle all generated .lib files so mods can link against the host.
         add_custom_command(
             TARGET ${TARGET_NAME} POST_BUILD
@@ -59,6 +67,10 @@ function(lus_setup_tcc_runtime TARGET_NAME)
             COMMAND ${CMAKE_COMMAND} -E copy_directory "${tinycc_SOURCE_DIR}/include/"        "${_stage}/include/"
             COMMAND ${CMAKE_COMMAND} -E copy_directory "${tinycc_SOURCE_DIR}/win32/include/"  "${_stage}/include/"
             COMMAND ${CMAKE_COMMAND} -E copy "${tinycc_SOURCE_DIR}/win32/lib/libtcc1.a" "${_stage}/lib/libtcc1.a"
+            # Standalone runtime objects TCC links on demand. bt-log.o is
+            # mandatory: with "-g" and TCC_OUTPUT_MEMORY, tcc_relocate() enables
+            # backtrace support and fails if it cannot find it.
+            COMMAND ${CMAKE_COMMAND} -E copy ${_tcc_win32_runtime_objs} "${_stage}/lib/"
             COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:libtcc>" "$<TARGET_FILE_DIR:${TARGET_NAME}>/$<TARGET_FILE_NAME:libtcc>"
             VERBATIM
         )
@@ -88,7 +100,7 @@ function(lus_setup_tcc_runtime TARGET_NAME)
             DESTINATION "${LUS_TCC_RESOURCES_DIR}/include"
             COMPONENT ${TARGET_NAME}
         )
-        install(FILES "${tinycc_SOURCE_DIR}/win32/lib/libtcc1.a"
+        install(FILES "${tinycc_SOURCE_DIR}/win32/lib/libtcc1.a" ${_tcc_win32_runtime_objs}
             DESTINATION "${LUS_TCC_RESOURCES_DIR}/lib"
             COMPONENT ${TARGET_NAME}
         )
