@@ -6513,9 +6513,9 @@ bool Interpreter::IsFrameReady() {
 }
 
 bool Interpreter::ViewportMatchesRendererResolution() {
-#ifdef __APPLE__
-    // Always treat the viewport as not matching the render resolution on mac
-    // to avoid issues with retina scaling.
+#if defined(__APPLE__) || defined(__EMSCRIPTEN__)
+    // Always treat the viewport as not matching the render resolution on mac and in
+    // browsers (points vs. device pixels) to avoid issues with retina scaling.
     return false;
 #else
     if (mCurDimensions.width == mGameWindowViewport.width && mCurDimensions.height == mGameWindowViewport.height) {

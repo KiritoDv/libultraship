@@ -66,9 +66,9 @@ void Fast3dGui::Init(GuiWindowInitData windowImpl) {
 }
 
 float Fast3dGui::ComputeDpiScale() {
-#if !defined(__APPLE__) || defined(__IOS__)
-    // Only macOS separates logical points from physical pixels here; every other
-    // platform (iOS included, which runs ImGui in pixel space) keeps a scale of 1.
+#if (!defined(__APPLE__) || defined(__IOS__)) && !defined(__EMSCRIPTEN__)
+    // Only macOS and browsers separate logical points from physical pixels here; every
+    // other platform (iOS included, which runs ImGui in pixel space) keeps a scale of 1.
     return 1.0f;
 #else
     // Opengl.Window and Metal.Window alias the same union slot (both are the SDL_Window*).
@@ -452,8 +452,9 @@ void Fast3dGui::CalculateGameViewport() {
     // internal resolution = true native pixels; no-op on standard-DPI displays).
     // The viewport rectangle stays in points, matching the point-based window
     // geometry. Windows/Linux already report pixels, and the iOS path keeps its
-    // pixel-based window dimensions, so the scale is 1 there.
-#if defined(__APPLE__) && !defined(__IOS__)
+    // pixel-based window dimensions, so the scale is 1 there. Browsers work the same
+    // way as macOS: CSS points for geometry, a device-pixel-ratio scaled canvas.
+#if (defined(__APPLE__) && !defined(__IOS__)) || defined(__EMSCRIPTEN__)
     const float dpiScale = GetDpiScale();
 #else
     const float dpiScale = 1.0f;

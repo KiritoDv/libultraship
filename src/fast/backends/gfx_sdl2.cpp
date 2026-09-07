@@ -257,6 +257,15 @@ void GfxWindowBackendSDL2::SetFullscreenImpl(bool on, bool call_callback) {
         toggleNativeMacOSFullscreen(mWnd);
     }
     mFullScreen = on;
+#elif defined(__EMSCRIPTEN__)
+    // Browser: desktop fullscreen stretches the canvas to the screen at device density; a plain
+    // SDL_WINDOW_FULLSCREEN keeps the canvas at its window size. The browser only honors the request
+    // from inside an input event, so SDL defers it to the next one, and the user can leave fullscreen
+    // with Escape without telling us. mFullScreen therefore follows SDL's window flags in HandleEvents.
+    if (SDL_SetWindowFullscreen(mWnd, on ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0) < 0) {
+        SPDLOG_ERROR("Failed to switch from or to fullscreen mode.");
+        SPDLOG_ERROR(SDL_GetError());
+    }
 #else
     if (SDL_SetWindowFullscreen(mWnd, on ? (mConsoleVariable->GetInteger(CVAR_SDL_WINDOWED_FULLSCREEN, 0)
                                                 ? SDL_WINDOW_FULLSCREEN_DESKTOP
@@ -269,6 +278,7 @@ void GfxWindowBackendSDL2::SetFullscreenImpl(bool on, bool call_callback) {
     }
 #endif
 
+#ifndef __EMSCRIPTEN__ // the canvas goes back to its CSS size on its own (see the resize callback in Init)
     if (!on) {
         mWindowWidth = mConfig->GetInt("Window.Width", 640);
         mWindowHeight = mConfig->GetInt("Window.Height", 480);
@@ -285,6 +295,7 @@ void GfxWindowBackendSDL2::SetFullscreenImpl(bool on, bool call_callback) {
     if (mOnFullscreenChanged != nullptr && call_callback) {
         mOnFullscreenChanged(on);
     }
+#endif
 }
 
 void GfxWindowBackendSDL2::GetActiveWindowRefreshRate(uint32_t* refresh_rate) {
@@ -457,7 +468,12 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
     }
 
     if (use_opengl) {
+#ifdef __EMSCRIPTEN__
+        // Browser: window geometry is CSS points; the canvas backing store is scaled by the device pixel ratio.
+        SDL_GetWindowSize(mWnd, &mWindowWidth, &mWindowHeight);
+#else
         SDL_GL_GetDrawableSize(mWnd, &mWindowWidth, &mWindowHeight);
+#endif
 
         if (startFullScreen) {
             SetFullscreenImpl(true, false);
@@ -597,8 +613,8 @@ void GfxWindowBackendSDL2::GetDimensions(uint32_t* width, uint32_t* height, int3
     } else {
         SDL_GetWindowSize(mWnd, static_cast<int*>((void*)width), static_cast<int*>((void*)height));
     }
-#elif defined(__APPLE__)
-    // macOS: window geometry is logical points for Metal and OpenGL alike; the
+#elif defined(__APPLE__) || defined(__EMSCRIPTEN__)
+    // macOS and browsers: window geometry is logical points (CSS pixels on the web); the
     // pixel-density scale is applied where the internal render size is computed.
     SDL_GetWindowSize(mWnd, static_cast<int*>((void*)width), static_cast<int*>((void*)height));
 #else
@@ -714,8 +730,8 @@ void GfxWindowBackendSDL2::HandleSingleEvent(SDL_Event& event) {
                     } else {
                         SDL_GetWindowSize(mWnd, &mWindowWidth, &mWindowHeight);
                     }
-#elif defined(__APPLE__)
-                    // macOS: window geometry is logical points for Metal and OpenGL alike; the
+#elif defined(__APPLE__) || defined(__EMSCRIPTEN__)
+                    // macOS and browsers: window geometry is logical points (CSS pixels on the web); the
                     // pixel-density scale is applied where the internal render size is computed.
                     SDL_GetWindowSize(mWnd, &mWindowWidth, &mWindowHeight);
 #else
@@ -753,6 +769,16 @@ void GfxWindowBackendSDL2::HandleEvents() {
     // resync fullscreen state
 #if defined(__APPLE__) && !defined(__IOS__)
     auto nextFullscreenState = isNativeMacOSFullscreenActive(mWnd);
+    if (mFullScreen != nextFullscreenState) {
+        mFullScreen = nextFullscreenState;
+        if (mOnFullscreenChanged != nullptr) {
+            mOnFullscreenChanged(mFullScreen);
+        }
+    }
+#elif defined(__EMSCRIPTEN__)
+    // The browser enters fullscreen on the next input event after the request and can leave it on
+    // its own (Escape); SDL mirrors both in the window flags.
+    const bool nextFullscreenState = (SDL_GetWindowFlags(mWnd) & SDL_WINDOW_FULLSCREEN) != 0;
     if (mFullScreen != nextFullscreenState) {
         mFullScreen = nextFullscreenState;
         if (mOnFullscreenChanged != nullptr) {
