@@ -258,13 +258,20 @@ void GfxWindowBackendSDL2::SetFullscreenImpl(bool on, bool call_callback) {
     }
     mFullScreen = on;
 #elif defined(__EMSCRIPTEN__)
-    // Browser: desktop fullscreen stretches the canvas to the screen at device density; a plain
-    // SDL_WINDOW_FULLSCREEN keeps the canvas at its window size. The browser only honors the request
-    // from inside an input event, so SDL defers it to the next one, and the user can leave fullscreen
-    // with Escape without telling us. mFullScreen therefore follows SDL's window flags in HandleEvents.
-    if (SDL_SetWindowFullscreen(mWnd, on ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0) < 0) {
-        SPDLOG_ERROR("Failed to switch from or to fullscreen mode.");
-        SPDLOG_ERROR(SDL_GetError());
+    // Browser: ask for fullscreen on the canvas directly, with no resize strategy. SDL's own path
+    // assumes the canvas becomes screen-sized, but the browser's fullscreen styling decides the real
+    // box (letterboxing, notch, page zoom), which left SDL scaling the mouse against a size the canvas
+    // never had. With the default strategy the browser sizes the element, the window resize callback
+    // registered in Init() pushes that size into SDL, and input stays 1:1. The request is only honored
+    // from inside an input event, so Emscripten defers it to the next one, and the user can leave with
+    // Escape; mFullScreen therefore follows the document's fullscreen state in HandleEvents.
+    if (on) {
+        EMSCRIPTEN_RESULT result = emscripten_request_fullscreen("#canvas", EM_TRUE);
+        if (result != EMSCRIPTEN_RESULT_SUCCESS && result != EMSCRIPTEN_RESULT_DEFERRED) {
+            SPDLOG_ERROR("Failed to request fullscreen from the browser ({})", (int)result);
+        }
+    } else {
+        emscripten_exit_fullscreen();
     }
 #else
     if (SDL_SetWindowFullscreen(mWnd, on ? (mConsoleVariable->GetInteger(CVAR_SDL_WINDOWED_FULLSCREEN, 0)
@@ -777,8 +784,10 @@ void GfxWindowBackendSDL2::HandleEvents() {
     }
 #elif defined(__EMSCRIPTEN__)
     // The browser enters fullscreen on the next input event after the request and can leave it on
-    // its own (Escape); SDL mirrors both in the window flags.
-    const bool nextFullscreenState = (SDL_GetWindowFlags(mWnd) & SDL_WINDOW_FULLSCREEN) != 0;
+    // its own (Escape), so follow the document's state rather than the request.
+    EmscriptenFullscreenChangeEvent fullscreenStatus;
+    const bool nextFullscreenState = emscripten_get_fullscreen_status(&fullscreenStatus) == EMSCRIPTEN_RESULT_SUCCESS &&
+                                     fullscreenStatus.isFullscreen;
     if (mFullScreen != nextFullscreenState) {
         mFullScreen = nextFullscreenState;
         if (mOnFullscreenChanged != nullptr) {
