@@ -95,9 +95,13 @@ std::shared_ptr<File> O2rArchive::LoadFile(const std::string& filePath) {
 }
 
 bool O2rArchive::Open() {
-    mZipArchive = zip_open(GetPath().c_str(), ZIP_CREATE, nullptr);
+    int zipErrorCode = 0;
+    mZipArchive = zip_open(GetPath().c_str(), ZIP_CREATE, &zipErrorCode);
     if (mZipArchive == nullptr) {
-        SPDLOG_ERROR("Failed to load zip file \"{}\"", GetPath());
+        zip_error_t zipError;
+        zip_error_init_with_code(&zipError, zipErrorCode);
+        SPDLOG_ERROR("Failed to load zip file \"{}\": {}", GetPath(), zip_error_strerror(&zipError));
+        zip_error_fini(&zipError);
         return false;
     }
 
