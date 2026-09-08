@@ -257,6 +257,22 @@ void GfxWindowBackendSDL2::SetFullscreenImpl(bool on, bool call_callback) {
         toggleNativeMacOSFullscreen(mWnd);
     }
     mFullScreen = on;
+#elif defined(__EMSCRIPTEN__)
+    // Browser: ask for fullscreen on the canvas directly, with no resize strategy. SDL's own path
+    // assumes the canvas becomes screen-sized, but the browser's fullscreen styling decides the real
+    // box (letterboxing, notch, page zoom), which left SDL scaling the mouse against a size the canvas
+    // never had. With the default strategy the browser sizes the element, the window resize callback
+    // registered in Init() pushes that size into SDL, and input stays 1:1. The request is only honored
+    // from inside an input event, so Emscripten defers it to the next one, and the user can leave with
+    // Escape; mFullScreen therefore follows the document's fullscreen state in HandleEvents.
+    if (on) {
+        EMSCRIPTEN_RESULT result = emscripten_request_fullscreen("#canvas", EM_TRUE);
+        if (result != EMSCRIPTEN_RESULT_SUCCESS && result != EMSCRIPTEN_RESULT_DEFERRED) {
+            SPDLOG_ERROR("Failed to request fullscreen from the browser ({})", (int)result);
+        }
+    } else {
+        emscripten_exit_fullscreen();
+    }
 #else
     if (SDL_SetWindowFullscreen(mWnd, on ? (mConsoleVariable->GetInteger(CVAR_SDL_WINDOWED_FULLSCREEN, 0)
                                                 ? SDL_WINDOW_FULLSCREEN_DESKTOP
@@ -269,6 +285,7 @@ void GfxWindowBackendSDL2::SetFullscreenImpl(bool on, bool call_callback) {
     }
 #endif
 
+#ifndef __EMSCRIPTEN__ // the canvas goes back to its CSS size on its own (see the resize callback in Init)
     if (!on) {
         mWindowWidth = mConfig->GetInt("Window.Width", 640);
         mWindowHeight = mConfig->GetInt("Window.Height", 480);
@@ -285,6 +302,7 @@ void GfxWindowBackendSDL2::SetFullscreenImpl(bool on, bool call_callback) {
     if (mOnFullscreenChanged != nullptr && call_callback) {
         mOnFullscreenChanged(on);
     }
+#endif
 }
 
 void GfxWindowBackendSDL2::GetActiveWindowRefreshRate(uint32_t* refresh_rate) {
@@ -457,7 +475,12 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
     }
 
     if (use_opengl) {
+#ifdef __EMSCRIPTEN__
+        // Browser: window geometry is CSS points; the canvas backing store is scaled by the device pixel ratio.
+        SDL_GetWindowSize(mWnd, &mWindowWidth, &mWindowHeight);
+#else
         SDL_GL_GetDrawableSize(mWnd, &mWindowWidth, &mWindowHeight);
+#endif
 
         if (startFullScreen) {
             SetFullscreenImpl(true, false);
@@ -597,8 +620,8 @@ void GfxWindowBackendSDL2::GetDimensions(uint32_t* width, uint32_t* height, int3
     } else {
         SDL_GetWindowSize(mWnd, static_cast<int*>((void*)width), static_cast<int*>((void*)height));
     }
-#elif defined(__APPLE__)
-    // macOS: window geometry is logical points for Metal and OpenGL alike; the
+#elif defined(__APPLE__) || defined(__EMSCRIPTEN__)
+    // macOS and browsers: window geometry is logical points (CSS pixels on the web); the
     // pixel-density scale is applied where the internal render size is computed.
     SDL_GetWindowSize(mWnd, static_cast<int*>((void*)width), static_cast<int*>((void*)height));
 #else
@@ -714,8 +737,8 @@ void GfxWindowBackendSDL2::HandleSingleEvent(SDL_Event& event) {
                     } else {
                         SDL_GetWindowSize(mWnd, &mWindowWidth, &mWindowHeight);
                     }
-#elif defined(__APPLE__)
-                    // macOS: window geometry is logical points for Metal and OpenGL alike; the
+#elif defined(__APPLE__) || defined(__EMSCRIPTEN__)
+                    // macOS and browsers: window geometry is logical points (CSS pixels on the web); the
                     // pixel-density scale is applied where the internal render size is computed.
                     SDL_GetWindowSize(mWnd, &mWindowWidth, &mWindowHeight);
 #else
@@ -753,6 +776,18 @@ void GfxWindowBackendSDL2::HandleEvents() {
     // resync fullscreen state
 #if defined(__APPLE__) && !defined(__IOS__)
     auto nextFullscreenState = isNativeMacOSFullscreenActive(mWnd);
+    if (mFullScreen != nextFullscreenState) {
+        mFullScreen = nextFullscreenState;
+        if (mOnFullscreenChanged != nullptr) {
+            mOnFullscreenChanged(mFullScreen);
+        }
+    }
+#elif defined(__EMSCRIPTEN__)
+    // The browser enters fullscreen on the next input event after the request and can leave it on
+    // its own (Escape), so follow the document's state rather than the request.
+    EmscriptenFullscreenChangeEvent fullscreenStatus;
+    const bool nextFullscreenState = emscripten_get_fullscreen_status(&fullscreenStatus) == EMSCRIPTEN_RESULT_SUCCESS &&
+                                     fullscreenStatus.isFullscreen;
     if (mFullScreen != nextFullscreenState) {
         mFullScreen = nextFullscreenState;
         if (mOnFullscreenChanged != nullptr) {
