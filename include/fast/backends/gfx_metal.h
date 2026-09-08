@@ -213,15 +213,15 @@ class GfxRenderingAPIMetal final : public GfxRenderingAPI {
     bool NonUniformThreadGroupSupported();
     void SetupScreenFramebuffer(uint32_t width, uint32_t height);
     // Elements that only need to be setup once
-    SDL_Renderer* mRenderer;
-    CA::MetalLayer* mLayer; // CA::MetalLayer*
-    MTL::Device* mDevice;
-    MTL::CommandQueue* mCommandQueue;
-    MTL::CommandQueue* mReadbackQueue;
+    SDL_Renderer* mRenderer = nullptr;
+    CA::MetalLayer* mLayer = nullptr; // CA::MetalLayer*
+    MTL::Device* mDevice = nullptr;
+    MTL::CommandQueue* mCommandQueue = nullptr;
+    MTL::CommandQueue* mReadbackQueue = nullptr;
 
     int mCurrentVertexBufferPoolIndex = 0;
-    MTL::Buffer* mVertexBufferPool[kMaxVertexBufferPoolSize];
-    size_t mVertexBufferCapacity[kMaxVertexBufferPoolSize];
+    MTL::Buffer* mVertexBufferPool[kMaxVertexBufferPoolSize] = {};
+    size_t mVertexBufferCapacity[kMaxVertexBufferPoolSize] = {};
     size_t mVertexBufferPeakThisFrame = 0;
     size_t mVertexBufferPeakLastFrame = 0;
     std::unordered_map<std::pair<uint64_t, uint64_t>, struct ShaderProgramMetal, hash_pair_shader_ids>
@@ -229,19 +229,19 @@ class GfxRenderingAPIMetal final : public GfxRenderingAPI {
 
     std::vector<struct TextureDataMetal> mTextures;
     std::vector<FramebufferMetal> mFramebuffers;
-    FrameUniforms mFrameUniforms;
-    CoordUniforms mCoordUniforms;
-    DrawUniforms mDrawUniforms;
-    MTL::Buffer* mFrameUniformBuffer;
+    FrameUniforms mFrameUniforms = {};
+    CoordUniforms mCoordUniforms = {};
+    DrawUniforms mDrawUniforms = {};
+    MTL::Buffer* mFrameUniformBuffer = nullptr;
 
-    uint32_t mMsaaNumQualityLevels[METAL_MAX_MULTISAMPLE_SAMPLE_COUNT];
+    uint32_t mMsaaNumQualityLevels[METAL_MAX_MULTISAMPLE_SAMPLE_COUNT] = {};
 
     // Depth querying
-    MTL::Buffer* mCoordUniformBuffer;
-    MTL::Buffer* mDepthValueOutputBuffer;
-    size_t mCoordBufferSize;
-    MTL::Function* mDepthComputeFunction;
-    MTL::Function* mConvertToRgb5a1Function;
+    MTL::Buffer* mCoordUniformBuffer = nullptr;
+    MTL::Buffer* mDepthValueOutputBuffer = nullptr;
+    size_t mCoordBufferSize = 0;
+    MTL::Function* mDepthComputeFunction = nullptr;
+    MTL::Function* mConvertToRgb5a1Function = nullptr;
     MTL::ComputePipelineState* mConvertToRgb5a1PipelineState = nullptr;
     std::shared_ptr<Ship::ConsoleVariable> mConsoleVariable;
     std::shared_ptr<Ship::ResourceManager> mResourceManager;
@@ -257,21 +257,21 @@ class GfxRenderingAPIMetal final : public GfxRenderingAPI {
     bool mScreenReadbackRequested = false;
 
     // Current state
-    struct ShaderProgramMetal* mShaderProgram;
-    CA::MetalDrawable* mCurrentDrawable;
+    struct ShaderProgramMetal* mShaderProgram = nullptr;
+    CA::MetalDrawable* mCurrentDrawable = nullptr;
     std::set<int> mDrawnFramebuffers;
-    NS::AutoreleasePool* mFrameAutoreleasePool;
+    NS::AutoreleasePool* mFrameAutoreleasePool = nullptr;
 
-    int mCurrentTile;
-    uint32_t mCurrentTextureIds[SHADER_MAX_TEXTURES];
+    int mCurrentTile = 0;
+    uint32_t mCurrentTextureIds[SHADER_MAX_TEXTURES] = {};
 
-    int32_t mRenderTargetHeight;
-    int mCurrentFramebuffer;
-    size_t mCurrentVertexBufferOffset;
+    int32_t mRenderTargetHeight = 0;
+    int mCurrentFramebuffer = 0;
+    size_t mCurrentVertexBufferOffset = 0;
     FilteringMode mCurrentFilterMode = FILTER_THREE_POINT;
     bool mLodMaxDirty = true;
 
-    bool mNonUniformThreadgroupSupported;
+    bool mNonUniformThreadgroupSupported = false;
 };
 
 } // namespace Fast
