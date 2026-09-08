@@ -180,6 +180,15 @@ if (LUS_ENABLE_VULKAN)
     elseif(TARGET Vulkan::shaderc_combined)
         target_link_libraries(libultraship PUBLIC Vulkan::shaderc_combined)
     endif()
+    if(MSVC)
+        # Load the Vulkan loader (and shaderc) on first use instead of at process start,
+        # so PCs without a Vulkan driver (no vulkan-1.dll) can still launch and use DX11/OpenGL.
+        target_link_options(libultraship PUBLIC "/DELAYLOAD:vulkan-1.dll")
+        if(TARGET Vulkan::shaderc_shared)
+            target_link_options(libultraship PUBLIC "/DELAYLOAD:shaderc_shared.dll")
+        endif()
+        target_link_libraries(libultraship PUBLIC delayimp)
+    endif()
 endif()
 
 if(ENABLE_SCRIPTING)
