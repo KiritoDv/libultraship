@@ -2007,7 +2007,7 @@ void Interpreter::ImportTexture(int i, int tile, bool importReplacement) {
         auto fbIt = mFbTextures.find((uintptr_t)origAddr);
         if (fbIt != mFbTextures.end()) {
             Flush();
-            mRapi->SelectTextureFb(fbIt->second);
+            mRapi->SelectTextureFb(fbIt->second, i);
             mRdp->textures_changed[i] = false;
             return;
         }
@@ -2532,8 +2532,17 @@ void Interpreter::GfxSpTri1(uint8_t vtx1_idx, uint8_t vtx2_idx, uint8_t vtx3_idx
     bool use_noise = (mRdp->other_mode_l & (3U << G_MDSFT_ALPHACOMPARE)) == G_AC_DITHER;
     bool use_2cyc = (mRdp->other_mode_h & (3U << G_MDSFT_CYCLETYPE)) == G_CYC_2CYCLE;
     bool alpha_threshold = (mRdp->other_mode_l & (3U << G_MDSFT_ALPHACOMPARE)) == G_AC_THRESHOLD;
+    // A blender cycle computes (P * A + M * B) / (A + B), so P and M both sourcing
+    // CLR_MEM leaves the framebuffer unchanged: the draw updates Z but not colour.
+    // P/M are at bits 30-31/22-23 in cycle 1 and 28-29/20-21 in cycle 2.
+    bool colour_is_memory = ((mRdp->other_mode_l & (3U << 30)) == ((uint32_t)G_BL_CLR_MEM << 30) &&
+                             (mRdp->other_mode_l & (3U << 22)) == ((uint32_t)G_BL_CLR_MEM << 22)) ||
+                            ((mRdp->other_mode_l & (3U << 28)) == ((uint32_t)G_BL_CLR_MEM << 28) &&
+                             (mRdp->other_mode_l & (3U << 20)) == ((uint32_t)G_BL_CLR_MEM << 20));
     bool invisible =
-        (mRdp->other_mode_l & (3 << 24)) == (G_BL_0 << 24) && (mRdp->other_mode_l & (3 << 20)) == (G_BL_CLR_MEM << 20);
+        ((mRdp->other_mode_l & (3 << 24)) == (G_BL_0 << 24) &&
+         (mRdp->other_mode_l & (3 << 20)) == (G_BL_CLR_MEM << 20)) ||
+        colour_is_memory;
     bool use_grayscale = mRdp->grayscale;
     bool use_prim_depth = (mRdp->other_mode_l & G_ZS_PRIM) != 0;
 
@@ -4713,7 +4722,7 @@ int Interpreter::RunPostPasses() {
         mRenderingState.scissor = {};
 
         // Previous image on tile 0
-        mRapi->SelectTextureFb(cur);
+        mRapi->SelectTextureFb(cur, 0);
         mRdp->textures_changed[0] = false;
         mRdp->textures_changed[1] = false;
 
@@ -5670,7 +5679,7 @@ bool gfx_set_timg_fb_handler_custom(F3DGfx** cmd0) {
     F3DGfx* cmd = *cmd0;
 
     gfx->Flush();
-    gfx->mRapi->SelectTextureFb((uint32_t)cmd->words.w1);
+    gfx->mRapi->SelectTextureFb((uint32_t)cmd->words.w1, 0);
     gfx->mRdp->textures_changed[0] = false;
     gfx->mRdp->textures_changed[1] = false;
     return false;

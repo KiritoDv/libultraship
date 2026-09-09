@@ -41,7 +41,7 @@ struct PerDrawCB {
     float palette_params[2][4];
     float lod_params[4];
     // Game-bindable register file; lockstep with the HLSL template's PerDrawCB
-    float uCustom[16][4];
+    float uCustom[GFX_NUM_CUSTOM_UNIFORMS][4];
     float debug_tint[4]; // HD-replacement debug tint: rgb = color, a = mix amount
 };
 
@@ -139,7 +139,7 @@ class GfxRenderingAPIDX11 final : public GfxRenderingAPI {
     std::unordered_map<std::pair<float, float>, uint16_t, hash_pair_ff>
     GetPixelDepth(int fb_id, const std::set<std::pair<float, float>>& coordinates) override;
     void* GetFramebufferTextureId(int fbId) override;
-    void SelectTextureFb(int fbId) override;
+    void SelectTextureFb(int fbId, int tile) override;
     void DeleteTexture(uint32_t texId) override;
     void SetTextureFilter(FilteringMode mode) override;
     FilteringMode GetTextureFilter() override;

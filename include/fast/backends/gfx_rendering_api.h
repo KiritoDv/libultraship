@@ -155,7 +155,10 @@ class GfxRenderingAPI {
     virtual std::unordered_map<std::pair<float, float>, uint16_t, hash_pair_ff>
     GetPixelDepth(int fb_id, const std::set<std::pair<float, float>>& coordinates) = 0;
     virtual void* GetFramebufferTextureId(int fbId) = 0;
-    virtual void SelectTextureFb(int fbId) = 0;
+    // `tile` is the texture unit to bind the FB to. Callers that want the
+    // conventional tile 0 pass 0; a 2-cycle combiner sampling the frame buffer
+    // as TEXEL1 needs it on tile 1.
+    virtual void SelectTextureFb(int fbId, int tile) = 0;
     virtual void DeleteTexture(uint32_t texId) = 0;
     virtual void SetTextureFilter(FilteringMode mode) = 0;
     virtual FilteringMode GetTextureFilter() = 0;
