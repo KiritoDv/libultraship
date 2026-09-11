@@ -567,6 +567,17 @@ ShaderProgram* GfxRenderingAPIOGL::CreateAndLoadNewShader(uint64_t shader_id0, u
     glAttachShader(shader_program, fragment_shader);
     glLinkProgram(shader_program);
 
+    glGetProgramiv(shader_program, GL_LINK_STATUS, &success);
+    if (!success) {
+        GLint max_length = 0;
+        glGetProgramiv(shader_program, GL_INFO_LOG_LENGTH, &max_length);
+        std::string error_log(max_length > 0 ? (size_t)max_length : (size_t)1, '\0');
+        glGetProgramInfoLog(shader_program, max_length, &max_length, error_log.data());
+        SPDLOG_ERROR("Shader program link failed (shader_id0={:#x}, shader_id1={:#x}): {}", shader_id0, shader_id1,
+                     error_log.c_str());
+        abort();
+    }
+
     size_t cnt = 0;
 
     struct ShaderProgram* prg = &mShaderProgramPool[std::make_pair(shader_id0, shader_id1)];
