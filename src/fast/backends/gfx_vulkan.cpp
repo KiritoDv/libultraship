@@ -934,7 +934,8 @@ bool GfxRenderingAPIVK::VulkanInit(SDL_Window* window) {
         VK_CHECK(vkCreateSemaphore(mDevice, &sci, nullptr, &slot.imageAvailable));
         VK_CHECK(vkCreateSemaphore(mDevice, &sci, nullptr, &slot.renderFinished));
 
-        CreateBuffer(mVertexRingCapacity, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        slot.vertexCapacity = mVertexRingCapacity;
+        CreateBuffer(slot.vertexCapacity, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, slot.vertexBuffer,
                      slot.vertexMemory, &slot.vertexMapped);
         CreateBuffer(mUniformRingCapacity, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
@@ -1711,9 +1712,19 @@ void GfxRenderingAPIVK::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, size_
 
     // Vertex data
     size_t dataSize = sizeof(float) * buf_vbo_len;
-    if (mVertexRingOffset + dataSize > mVertexRingCapacity) {
-        SPDLOG_ERROR("Vulkan: vertex ring overflow, dropping draw");
-        return;
+    if (mVertexRingOffset + dataSize > slot.vertexCapacity) {
+        // Same trick as the staging buffer above: retire the current one to this slot's garbage,
+        // which CollectGarbage frees after the slot's fence, so the draws already recorded against
+        // it stay valid. Dropping the draw instead cost a visibly incomplete frame.
+        size_t newCapacity = std::max(slot.vertexCapacity * 2, mVertexRingOffset + dataSize);
+        slot.garbageBuffers.push_back(slot.vertexBuffer);
+        slot.garbageMemory.push_back(slot.vertexMemory);
+        CreateBuffer(newCapacity, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, slot.vertexBuffer,
+                     slot.vertexMemory, &slot.vertexMapped);
+        SPDLOG_INFO("Vulkan: grew vertex ring to {} MB", newCapacity / (1024 * 1024));
+        slot.vertexCapacity = newCapacity;
+        mVertexRingOffset = 0;
     }
     memcpy(slot.vertexMapped + mVertexRingOffset, buf_vbo, dataSize);
     VkDeviceSize vbOffset = mVertexRingOffset;
@@ -2198,6 +2209,11 @@ std::unordered_map<std::pair<float, float>, uint16_t, hash_pair_ff>
 GfxRenderingAPIVK::GetPixelDepth(int fbId, const std::set<std::pair<float, float>>& coordinates) {
     std::unordered_map<std::pair<float, float>, uint16_t, hash_pair_ff> res;
     if (fbId >= (int)mFramebuffers.size() || coordinates.empty() || !mFrameActive) {
+        // Callers index the result by coordinate, so answer for every one asked about even when
+        // there is nothing to read - outside a recorded frame, or for a framebuffer we don't have.
+        for (const auto& coord : coordinates) {
+            res.emplace(coord, 0);
+        }
         return res;
     }
     FramebufferVK& fb = mFramebuffers[fbId];

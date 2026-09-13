@@ -44,6 +44,12 @@ Fast3dWindow::Fast3dWindow(std::shared_ptr<Ship::Gui> gui, std::shared_ptr<FastM
         AddAvailableWindowBackend(WindowBackend::FAST3D_SDL_METAL);
     }
 #endif
+#ifdef ENABLE_VULKAN
+    if (Vulkan_IsSupported()) {
+        AddAvailableWindowBackend(WindowBackend::FAST3D_SDL_VULKAN);
+    }
+#endif
+
     AddAvailableWindowBackend(WindowBackend::FAST3D_SDL_OPENGL);
 }
 

@@ -222,6 +222,7 @@ class GfxRenderingAPIVK final : public GfxRenderingAPI {
         VkBuffer vertexBuffer = VK_NULL_HANDLE;
         VkDeviceMemory vertexMemory = VK_NULL_HANDLE;
         uint8_t* vertexMapped = nullptr;
+        size_t vertexCapacity = 0;
 
         VkBuffer uniformBuffer = VK_NULL_HANDLE;
         VkDeviceMemory uniformMemory = VK_NULL_HANDLE;
