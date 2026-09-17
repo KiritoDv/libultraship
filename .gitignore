@@ -376,3 +376,6 @@ doxygen_out/
 docs/_site/
 docs/.jekyll-cache/
 docs/Gemfile.lock
+
+# Output of the generate_keys_header tool when building in-source
+/src/generate_keys_header
