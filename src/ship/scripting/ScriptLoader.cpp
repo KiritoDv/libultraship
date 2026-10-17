@@ -390,6 +390,7 @@ void ScriptLoader::UnloadAll() {
         loader.Unload();
     }
     mLoadedScripts.clear();
+    mLoadedArchives.clear();
 }
 
 void* ScriptLoader::GetFunction(const std::string& name, const std::string& function) {
