@@ -352,7 +352,9 @@ Finding the Vulkan library along with additional components:
 #]=======================================================================]
 
 cmake_policy(PUSH)
-cmake_policy(SET CMP0159 NEW) # file(STRINGS) with REGEX updates CMAKE_MATCH_<n>
+if(POLICY CMP0159)
+  cmake_policy(SET CMP0159 NEW) # file(STRINGS) with REGEX updates CMAKE_MATCH_<n>
+endif()
 
 # Provide compatibility with a common invalid component request that
 # was silently ignored prior to CMake 3.24.

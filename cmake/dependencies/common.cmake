@@ -56,6 +56,18 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT CMAKE_SYSTEM_NAME STREQUAL "And
 
     find_package(Vulkan QUIET)
 
+    if(Vulkan_FOUND AND NOT WIN32 AND NOT TARGET Vulkan::shaderc_shared)
+        find_library(LUS_SHADERC_SHARED_LIB NAMES shaderc_shared shaderc HINTS /opt/homebrew/lib /usr/local/lib)
+        find_path(LUS_SHADERC_INCLUDE_DIR shaderc/shaderc.hpp HINTS /opt/homebrew/include /usr/local/include)
+        if(LUS_SHADERC_SHARED_LIB AND LUS_SHADERC_INCLUDE_DIR)
+            add_library(Vulkan::shaderc_shared SHARED IMPORTED GLOBAL)
+            set_target_properties(Vulkan::shaderc_shared PROPERTIES
+                IMPORTED_LOCATION "${LUS_SHADERC_SHARED_LIB}"
+                INTERFACE_INCLUDE_DIRECTORIES "${LUS_SHADERC_INCLUDE_DIR}")
+            message(STATUS "Using shared shaderc: ${LUS_SHADERC_SHARED_LIB}")
+        endif()
+    endif()
+
     if(Vulkan_FOUND)
         set(LUS_ENABLE_VULKAN ON CACHE INTERNAL "Vulkan backend available")
         target_sources(ImGui PRIVATE ${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp)
