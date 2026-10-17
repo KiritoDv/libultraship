@@ -48,12 +48,12 @@ std::shared_ptr<File> ArchiveManager::LoadFile(const std::string& filePath) {
 }
 
 std::shared_ptr<File> ArchiveManager::LoadFile(uint64_t hash) {
-    auto archive = mFileToArchive[hash];
-    if (archive == nullptr) {
+    const auto it = mFileToArchive.find(hash);
+    if (it == mFileToArchive.end() || it->second == nullptr) {
         return nullptr;
     }
 
-    return archive->LoadFile(hash);
+    return it->second->LoadFile(hash);
 }
 
 bool ArchiveManager::HasFile(const std::string& filePath) {
@@ -65,7 +65,8 @@ bool ArchiveManager::HasFile(uint64_t hash) {
 }
 
 std::shared_ptr<Archive> ArchiveManager::GetArchiveFromFile(const std::string& filePath) {
-    return mFileToArchive[CRC64(filePath.c_str())];
+    const auto it = mFileToArchive.find(CRC64(filePath.c_str()));
+    return it != mFileToArchive.end() ? it->second : nullptr;
 }
 
 std::shared_ptr<std::vector<std::string>> ArchiveManager::ListFiles(const std::string& searchMask) {
