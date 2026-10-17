@@ -512,6 +512,7 @@ void ScriptLoader::UnloadAll() {
     }
     mInitializedScripts.clear();
     mLoadedScripts.clear();
+    mLoadedArchives.clear();
 }
 
 const std::vector<std::string>& ScriptLoader::GetLoadErrors() const {
