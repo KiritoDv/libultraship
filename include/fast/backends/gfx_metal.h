@@ -145,6 +145,7 @@ struct DrawUniforms {
     // Game-bindable register file; lockstep with the metal template's DrawUniforms
     simd::float4 uCustom[GFX_NUM_CUSTOM_UNIFORMS];
     simd::float4 debug_tint; // HD-replacement debug tint: rgb = color, a = mix amount
+    simd::float4 alpha_ref;
 };
 
 struct CoordUniforms {
@@ -174,7 +175,6 @@ class GfxRenderingAPIMetal final : public GfxRenderingAPI {
     void SetDepthTestAndMask(bool depth_test, bool z_upd) override;
     void SetCurrentPrimDepth(float depth) override;
     void SetCurrentMaxLod(float maxLod) override;
-    void SetZmodeDecal(bool decal) override;
     void SetStrictDecal(bool on) override;
     void SetViewport(int x, int y, int width, int height) override;
     void SetScissor(int x, int y, int width, int height) override;

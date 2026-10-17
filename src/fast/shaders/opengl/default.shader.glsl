@@ -66,6 +66,7 @@
     // Declared unconditionally: .w carries the RGB dither mode used by every draw.
     uniform vec4 uLodParams; // x=res scale, y=prim_lod_min, z=G_TD mode, w=RGB dither mode
     uniform vec4 uDebugTint;  // HD-replacement debug tint: rgb = color, a = mix amount
+    uniform vec4 uAlphaRef;
 
     uniform int texture_width[2];
     uniform int texture_height[2];
@@ -275,14 +276,14 @@
         // TODO discard if alpha is 0?
         @if(o_fog)
             @if(o_alpha)
-                texel = vec4(mix(texel.rgb, uFogColor.rgb, vFogFactor), texel.a);
+                texel = vec4(mix(texel.rgb, uFogColor.rgb, clamp(vFogFactor, 0.0, 1.0)), texel.a);
             @else
-                texel = mix(texel, uFogColor.rgb, vFogFactor);
+                texel = mix(texel, uFogColor.rgb, clamp(vFogFactor, 0.0, 1.0));
             @end
         @end
 
         @if(o_texture_edge && o_alpha)
-            if (texel.a > 0.19) texel.a = 1.0; else discard;
+            if (texel.a > uAlphaRef.x) texel.a = 1.0; else discard;
         @end
 
         @if(o_alpha && o_noise)
@@ -311,7 +312,7 @@
 
         @if(o_alpha)
             @if(o_alpha_threshold)
-                if (texel.a < 8.0 / 256.0) discard;
+                if (texel.a < uAlphaRef.y) discard;
             @end
             @if(o_invisible)
                 texel.a = 0.0;

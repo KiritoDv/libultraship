@@ -92,6 +92,7 @@ class Fast3dWindow : public Ship::Window {
     const char* GetKeyName(int32_t scancode) override;
 
     std::string GetWindowBackendName() override;
+    void SetTitle(const std::string& title) override;
 
     void SetCurrentDimensions(uint32_t width, uint32_t height) override;
     void SetCurrentDimensions(uint32_t width, uint32_t height, int32_t posX, int32_t posY) override;

@@ -45,6 +45,7 @@ class GfxWindowBackendDXGI final : public GfxWindowBackend {
     bool IsMouseCaptured() override;
     void GetDimensions(uint32_t* width, uint32_t* height, int32_t* posX, int32_t* posY) override;
     void SetDimensions(uint32_t width, uint32_t height, int32_t posX, int32_t posY) override;
+    void SetTitle(const char* title) override;
     Ship::WindowRect GetPrimaryMonitorRect() override;
     void HandleEvents() override;
     bool IsFrameReady() override;

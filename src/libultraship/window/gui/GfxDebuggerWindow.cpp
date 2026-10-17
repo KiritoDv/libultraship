@@ -175,6 +175,15 @@ void GfxDebuggerWindow::DrawDisasNode(const F3DGfx* cmd, std::vector<const F3DGf
             }
 #endif
 
+#ifdef F3DEX_GBI_2
+            case F3DEX2_AC_G_TRIN:
+            case F3DEX2_AC_G_TRIN_INDEPEND: {
+                simpleNode(cmd, opcode);
+                cmd += gfx_get_current_ucode() == ucode_f3dex2_ac ? GfxTrinDecodeAc(cmd, nullptr, nullptr) : 1;
+                break;
+            }
+#endif
+
 #ifdef F3DEX_GBI_2 // Different opcodes, same behavior. Handle subtrees for DL calls.
             case F3DEX2_G_DL: {
 #else

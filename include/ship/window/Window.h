@@ -217,6 +217,8 @@ class Window : public Component {
      * override this to return backend-specific names such as "OpenGL", "Metal", or "DirectX 11".
      */
     virtual std::string GetWindowBackendName();
+    virtual void SetTitle(const std::string& title);
+    const std::string& GetTitle() const;
     /** @brief Returns the list of backends available on this platform. */
     std::shared_ptr<std::vector<int32_t>> GetAvailableWindowBackends();
     /**
@@ -305,5 +307,6 @@ class Window : public Component {
     std::shared_ptr<Config> mConfig;
     int32_t mFullscreenScancode;
     int32_t mMouseCaptureScancode;
+    std::string mTitle;
 };
 } // namespace Ship

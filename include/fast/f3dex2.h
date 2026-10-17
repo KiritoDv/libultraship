@@ -29,6 +29,25 @@ constexpr int8_t F3DEX2_G_TRI2 = OPCODE(0x06);
 constexpr int8_t F3DEX2_G_QUAD = OPCODE(0x07);
 constexpr int8_t F3DEX2_G_LINE3D = OPCODE(0x08);
 
+constexpr int8_t F3DEX2_AC_G_TRIN = OPCODE(0x09);
+constexpr int8_t F3DEX2_AC_G_TRIN_INDEPEND = OPCODE(0x0a);
+constexpr int8_t F3DEX2_AC_G_SETTEXEDGEALPHA = OPCODE(0xce);
+constexpr int8_t F3DEX2_AC_G_SETCOMBINE_NOTEV = OPCODE(0xcf);
+constexpr int8_t F3DEX2_AC_G_SETCOMBINE_TEV = OPCODE(0xd0);
+constexpr int8_t F3DEX2_AC_G_SETTILE_DOLPHIN = OPCODE(0xd2);
+
+constexpr uint8_t F3DEX2_AC_G_SPECIAL_TA_MODE = 2;
+constexpr uint8_t F3DEX2_AC_G_TA_N64 = 0;
+constexpr uint8_t F3DEX2_AC_G_TA_DOLPHIN = 1;
+
+constexpr uint8_t F3DEX2_AC_G_TEX_EDGE_ALPHA_DEFAULT = 144;
+
+constexpr uint32_t F3DEX2_AC_G_DECAL_LEQUAL = 0x00000000;
+constexpr uint32_t F3DEX2_AC_G_DECAL_GEQUAL = 0x00000010;
+constexpr uint32_t F3DEX2_AC_G_DECAL_EQUAL = 0x00000020;
+constexpr uint32_t F3DEX2_AC_G_DECAL_ALWAYS = 0x00000030;
+constexpr uint32_t F3DEX2_AC_G_DECAL_SPECIAL = 0x00000040;
+
 /*
  * G_MTX: parameter flags
  */

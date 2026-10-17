@@ -66,6 +66,7 @@ struct ShaderProgram {
     GLint palette_params_location;
     GLint lod_params_location;
     GLint debug_tint_location;
+    GLint alpha_ref_location;
     GLint custom_location;
 };
 
@@ -111,7 +112,6 @@ class GfxRenderingAPIOGL final : public GfxRenderingAPI {
     void SetSamplerParameters(int sampler, bool linear_filter, uint32_t cms, uint32_t cmt) override;
     void SetDepthTestAndMask(bool depth_test, bool z_upd) override;
     void SetCurrentPrimDepth(float depth) override;
-    void SetZmodeDecal(bool decal) override;
     void SetStrictDecal(bool on) override;
     void SetViewport(int x, int y, int width, int height) override;
     void SetScissor(int x, int y, int width, int height) override;

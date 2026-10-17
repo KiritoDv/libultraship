@@ -474,8 +474,8 @@ void Fast3dGui::CalculateGameViewport() {
 
     switch (mConsoleVariables->GetInteger(CVAR_LOW_RES_MODE, 0)) {
         case 1: { // N64 Mode
-            mInterpreter.lock()->mCurDimensions.width = 320;
-            mInterpreter.lock()->mCurDimensions.height = 240;
+            mInterpreter.lock()->mCurDimensions.width = mInterpreter.lock()->mNativeDimensions.width;
+            mInterpreter.lock()->mCurDimensions.height = mInterpreter.lock()->mNativeDimensions.height;
             /*
             const int sw = size.y * 320 / 240;
             mInterpreter.lock()->mGameWindowViewport.x += ((int)size.x - sw) / 2;

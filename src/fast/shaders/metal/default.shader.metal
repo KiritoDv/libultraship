@@ -24,6 +24,7 @@ struct DrawUniforms {
     // Game-bindable register file; lockstep with DrawUniforms in gfx_metal.h
     float4 uCustom[32];
     float4 debug_tint; // HD-replacement debug tint: rgb = color, a = mix amount
+    float4 alpha_ref;
 };
 
 @if(o_lighting || o_texgen)
@@ -119,7 +120,7 @@ vertex ProjectedVertex vertexShader(Vertex in [[stage_in]]
     @end
     @if(o_fog)
         // N64 RSP fog from clip-space z/w;
-        // fog_params.w selects the source (0: computed, 1: constant, 2: vertex alpha)
+        // fog_params.w selects the source (0: computed, 1: constant, 2: vertex alpha, 3: linear eye depth)
         float fogZ = clipPos.z;
         float fogW = abs(clipPos.w) < 0.001 ? 0.001 : clipPos.w;
         float fogWinv = 1.0 / fogW;
@@ -127,11 +128,14 @@ vertex ProjectedVertex vertexShader(Vertex in [[stage_in]]
             fogWinv = 32767.0;
         }
         float fogCalc = clamp(fogZ * fogWinv * drawUniforms.fog_params.x + drawUniforms.fog_params.y, 0.0, 255.0) / 255.0;
+        if (drawUniforms.fog_params.w > 2.5) {
+            fogCalc = (clipPos.w - drawUniforms.fog_params.x) * drawUniforms.fog_params.y;
+        }
         @if(o_shade && o_alpha)
-            out.fogFactor = drawUniforms.fog_params.w > 1.5 ? in.shade.w
-                            : (drawUniforms.fog_params.w > 0.5 ? drawUniforms.fog_params.z : fogCalc);
+            out.fogFactor = drawUniforms.fog_params.w > 1.5 && drawUniforms.fog_params.w < 2.5 ? in.shade.w
+                            : (drawUniforms.fog_params.w > 0.5 && drawUniforms.fog_params.w < 2.5 ? drawUniforms.fog_params.z : fogCalc);
         @else
-            out.fogFactor = drawUniforms.fog_params.w > 0.5 ? drawUniforms.fog_params.z : fogCalc;
+            out.fogFactor = drawUniforms.fog_params.w > 0.5 && drawUniforms.fog_params.w < 2.5 ? drawUniforms.fog_params.z : fogCalc;
         @end
     @end
     @if(o_texgen)
@@ -160,7 +164,7 @@ vertex ProjectedVertex vertexShader(Vertex in [[stage_in]]
         // Standard fog forces shade alpha to 1.0; blend-color mode preserves it
         float shadeAlpha = in.shade.w;
         @if(o_fog)
-            if (drawUniforms.fog_params.w < 0.5 || drawUniforms.fog_params.w > 1.5) {
+            if (drawUniforms.fog_params.w < 0.5 || (drawUniforms.fog_params.w > 1.5 && drawUniforms.fog_params.w < 2.5)) {
                 shadeAlpha = 1.0;
             }
         @end
@@ -510,7 +514,7 @@ fragment FragOut fragmentShader(
     @end
 
     @if(o_texture_edge && o_alpha)
-        if (texel.w > 0.19) texel.w = 1.0; else discard_fragment();
+        if (texel.w > drawUniforms.alpha_ref.x) texel.w = 1.0; else discard_fragment();
     @end
 
     texel = WRAP(texel, -0.51, 1.51);
@@ -519,9 +523,9 @@ fragment FragOut fragmentShader(
 
     @if(o_fog)
         @if(o_alpha)
-            texel = float4(mix(texel.xyz, drawUniforms.fog_color.xyz, in.fogFactor), texel.w);
+            texel = float4(mix(texel.xyz, drawUniforms.fog_color.xyz, saturate(in.fogFactor)), texel.w);
         @else
-            texel = mix(texel, drawUniforms.fog_color.xyz, in.fogFactor);
+            texel = mix(texel, drawUniforms.fog_color.xyz, saturate(in.fogFactor));
         @end
     @end
 
@@ -553,7 +557,7 @@ fragment FragOut fragmentShader(
     FragOut out;
     @if(o_alpha)
         @if(o_alpha_threshold)
-            if (texel.w < 8.0 / 256.0) discard_fragment();
+            if (texel.w < drawUniforms.alpha_ref.y) discard_fragment();
         @end
         @if(o_invisible)
             texel.w = 0.0;

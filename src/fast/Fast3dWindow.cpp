@@ -131,7 +131,7 @@ void Fast3dWindow::OnInit(const nlohmann::json& initArgs) {
     InitWindowManager();
     mGfxDebugger = std::make_shared<GfxDebugger>();
     mInterpreter->SetGfxDebugger(mGfxDebugger);
-    mInterpreter->Init(mWindowManagerApi, mRenderingApi, GetName().c_str(), isFullscreen, width, height, posX, posY,
+    mInterpreter->Init(mWindowManagerApi, mRenderingApi, GetTitle().c_str(), isFullscreen, width, height, posX, posY,
                        GetConsoleVariables(), GetContext()->GetChildren().GetFirst<Ship::ResourceManager>());
     mWindowManagerApi->SetFullscreenChangedCallback(OnFullscreenChanged);
     mWindowManagerApi->SetKeyboardCallbacks(KeyDown, KeyUp, AllKeysUp);
@@ -496,6 +496,13 @@ std::string Fast3dWindow::GetWindowBackendName() {
 #endif
         default:
             return "";
+    }
+}
+
+void Fast3dWindow::SetTitle(const std::string& title) {
+    Window::SetTitle(title);
+    if (IsInitialized()) {
+        mWindowManagerApi->SetTitle((GetTitle() + " (" + mRenderingApi->GetName() + ")").c_str());
     }
 }
 

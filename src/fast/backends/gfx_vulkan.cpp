@@ -1403,10 +1403,6 @@ void GfxRenderingAPIVK::SetDepthTestAndMask(bool depth_test, bool z_upd) {
     mCurrentDepthMask = z_upd;
 }
 
-void GfxRenderingAPIVK::SetZmodeDecal(bool decal) {
-    mCurrentZmodeDecal = decal;
-}
-
 void GfxRenderingAPIVK::SetStrictDecal(bool on) {
     mCurrentStrictDecal = on;
 }
@@ -1447,19 +1443,34 @@ void GfxRenderingAPIVK::SetUseAlpha(bool useAlpha) {
 // Lazily creates the pipeline for the current depth/cull/framebuffer state.
 VkPipeline GfxRenderingAPIVK::GetPipelineForState(ShaderProgramVK* prg, FramebufferVK& fb) {
     // Derive the depth compare op the same way Metal does
-    uint32_t compareSel; // 0 = ALWAYS, 1 = LESS, 2 = LEQUAL, 3 = EQUAL
+    uint32_t compareSel; // 0 = ALWAYS, 1 = LESS, 2 = LEQUAL, 3 = EQUAL, 4 = GEQUAL
     if (!mCurrentDepthTest) {
         compareSel = 0;
-    } else if (mCurrentZmodeDecal != 0) {
-        compareSel = mCurrentStrictDecal ? 3 : 2;
     } else {
-        compareSel = 2; // LEQUAL: coplanar transparent overlays at equal depth still draw
+        switch (mCurrentZmodeDecal) {
+            case DECAL_MODE_LEQUAL:
+                compareSel = mCurrentStrictDecal ? 3 : 2;
+                break;
+            case DECAL_MODE_GEQUAL:
+                compareSel = 4;
+                break;
+            case DECAL_MODE_EQUAL:
+                compareSel = 3;
+                break;
+            case DECAL_MODE_ALWAYS:
+                compareSel = 0;
+                break;
+            default:
+                compareSel = 2; // LEQUAL: coplanar transparent overlays at equal depth still draw
+                break;
+        }
     }
     uint32_t cullSel = mCurrentCullKeepSign > 0 ? 1 : (mCurrentCullKeepSign < 0 ? 2 : 0);
-    bool depthBias = mCurrentZmodeDecal && !mCurrentStrictDecal;
+    bool depthBias =
+        (mCurrentZmodeDecal == DECAL_MODE_LEQUAL && !mCurrentStrictDecal) || mCurrentZmodeDecal == DECAL_MODE_GEQUAL;
 
     uint32_t key = fb.mMsaaLevel | ((fb.mHasDepthBuffer ? 1u : 0) << 4) | ((mCurrentDepthMask ? 1u : 0) << 5) |
-                   (compareSel << 6) | (cullSel << 8) | ((depthBias ? 1u : 0) << 10);
+                   (compareSel << 6) | (cullSel << 9) | ((depthBias ? 1u : 0) << 11);
 
     auto it = prg->pipelines.find(key);
     if (it != prg->pipelines.end()) {
@@ -1508,8 +1519,8 @@ VkPipeline GfxRenderingAPIVK::GetPipelineForState(ShaderProgramVK* prg, Framebuf
     VkPipelineDepthStencilStateCreateInfo depth = { VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO };
     depth.depthTestEnable = fb.mHasDepthBuffer && (mCurrentDepthTest || mCurrentDepthMask) ? VK_TRUE : VK_FALSE;
     depth.depthWriteEnable = fb.mHasDepthBuffer && mCurrentDepthMask ? VK_TRUE : VK_FALSE;
-    static const VkCompareOp compareOps[4] = { VK_COMPARE_OP_ALWAYS, VK_COMPARE_OP_LESS, VK_COMPARE_OP_LESS_OR_EQUAL,
-                                               VK_COMPARE_OP_EQUAL };
+    static const VkCompareOp compareOps[5] = { VK_COMPARE_OP_ALWAYS, VK_COMPARE_OP_LESS, VK_COMPARE_OP_LESS_OR_EQUAL,
+                                               VK_COMPARE_OP_EQUAL, VK_COMPARE_OP_GREATER_OR_EQUAL };
     depth.depthCompareOp = compareOps[compareSel];
 
     VkPipelineColorBlendAttachmentState blendAttachment = {};
@@ -1604,6 +1615,7 @@ void GfxRenderingAPIVK::WriteDrawUniformsIfDirty() {
         memcpy(mDrawUniforms.palette_params, mCombinerUniforms.palette_params, sizeof(mDrawUniforms.palette_params));
         memcpy(mDrawUniforms.lod_params, mCombinerUniforms.lod_params, sizeof(mDrawUniforms.lod_params));
         memcpy(mDrawUniforms.debug_tint, mCombinerUniforms.debug_tint, sizeof(mDrawUniforms.debug_tint));
+        memcpy(mDrawUniforms.alpha_ref, mCombinerUniforms.alpha_ref, sizeof(mDrawUniforms.alpha_ref));
         memcpy(mDrawUniforms.custom, mCustomUniforms.regs, sizeof(mDrawUniforms.custom));
         mDrawUniformOffset = pushBlock(&mDrawUniforms, sizeof(mDrawUniforms));
         mPrimDepthDirty = false;
@@ -1645,7 +1657,7 @@ void GfxRenderingAPIVK::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, size_
 
     // Decal depth bias (dynamic state, mirrors the Metal SSDB computation)
     float bias = 0.0f;
-    if (mCurrentZmodeDecal && !mCurrentStrictDecal) {
+    if ((mCurrentZmodeDecal == DECAL_MODE_LEQUAL && !mCurrentStrictDecal) || mCurrentZmodeDecal == DECAL_MODE_GEQUAL) {
         const int n64modeFactor = 120;
         const int noVanishFactor = 100;
         switch (mConsoleVariable->GetInteger(CVAR_Z_FIGHTING_MODE, 0)) {
@@ -1657,6 +1669,9 @@ void GfxRenderingAPIVK::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, size_
                 break;
             default:
                 bias = -2.0f;
+        }
+        if (mCurrentZmodeDecal == DECAL_MODE_GEQUAL) {
+            bias = -bias;
         }
         vkCmdSetDepthBias(cmd, 0.0f, 0.0f, bias);
     } else if (fb.mLastDepthBias != 0.0f) {

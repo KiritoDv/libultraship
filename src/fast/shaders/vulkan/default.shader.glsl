@@ -256,14 +256,14 @@
         texel = clamp(texel, 0.0, 1.0);
         @if(o_fog)
             @if(o_alpha)
-                texel = vec4(mix(texel.rgb, drawU.fog_color.rgb, vFogFactor), texel.a);
+                texel = vec4(mix(texel.rgb, drawU.fog_color.rgb, clamp(vFogFactor, 0.0, 1.0)), texel.a);
             @else
-                texel = mix(texel, drawU.fog_color.rgb, vFogFactor);
+                texel = mix(texel, drawU.fog_color.rgb, clamp(vFogFactor, 0.0, 1.0));
             @end
         @end
 
         @if(o_texture_edge && o_alpha)
-            if (texel.a > 0.19) texel.a = 1.0; else discard;
+            if (texel.a > drawU.alpha_ref.x) texel.a = 1.0; else discard;
         @end
 
         @if(o_alpha && o_noise)
@@ -292,7 +292,7 @@
 
         @if(o_alpha)
             @if(o_alpha_threshold)
-                if (texel.a < 8.0 / 256.0) discard;
+                if (texel.a < drawU.alpha_ref.y) discard;
             @end
             @if(o_invisible)
                 texel.a = 0.0;

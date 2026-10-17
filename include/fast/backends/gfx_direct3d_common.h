@@ -43,6 +43,7 @@ struct PerDrawCB {
     // Game-bindable register file; lockstep with the HLSL template's PerDrawCB
     float uCustom[16][4];
     float debug_tint[4]; // HD-replacement debug tint: rgb = color, a = mix amount
+    float alpha_ref[4];
 };
 
 struct PerPrimDepthCB {
@@ -115,7 +116,6 @@ class GfxRenderingAPIDX11 final : public GfxRenderingAPI {
     void SetDepthTestAndMask(bool depth_test, bool z_upd) override;
     void SetCurrentPrimDepth(float depth) override;
     void SetCurrentMaxLod(float maxLod) override;
-    void SetZmodeDecal(bool decal) override;
     void SetStrictDecal(bool on) override;
     void SetViewport(int x, int y, int width, int height) override;
     void SetScissor(int x, int y, int width, int height) override;

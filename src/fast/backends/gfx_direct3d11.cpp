@@ -687,10 +687,6 @@ void GfxRenderingAPIDX11::SetCurrentMaxLod(float maxLod) {
     }
 }
 
-void GfxRenderingAPIDX11::SetZmodeDecal(bool zmode_decal) {
-    mCurrentZmodeDecal = zmode_decal;
-}
-
 void GfxRenderingAPIDX11::SetStrictDecal(bool on) {
     mCurrentStrictDecal = on;
 }
@@ -737,11 +733,22 @@ void GfxRenderingAPIDX11::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, siz
         depth_stencil_desc.DepthEnable = mCurrentDepthTest || mCurrentDepthMask;
         depth_stencil_desc.DepthWriteMask =
             mCurrentDepthMask ? D3D11_DEPTH_WRITE_MASK_ALL : D3D11_DEPTH_WRITE_MASK_ZERO;
-        depth_stencil_desc.DepthFunc =
-            mCurrentDepthTest
-                ? (mCurrentZmodeDecal ? (mCurrentStrictDecal ? D3D11_COMPARISON_EQUAL : D3D11_COMPARISON_LESS_EQUAL)
-                                      : D3D11_COMPARISON_LESS_EQUAL)
-                : D3D11_COMPARISON_ALWAYS;
+        D3D11_COMPARISON_FUNC depthFunc = D3D11_COMPARISON_LESS_EQUAL;
+        switch (mCurrentZmodeDecal) {
+            case DECAL_MODE_LEQUAL:
+                depthFunc = mCurrentStrictDecal ? D3D11_COMPARISON_EQUAL : D3D11_COMPARISON_LESS_EQUAL;
+                break;
+            case DECAL_MODE_GEQUAL:
+                depthFunc = D3D11_COMPARISON_GREATER_EQUAL;
+                break;
+            case DECAL_MODE_EQUAL:
+                depthFunc = D3D11_COMPARISON_EQUAL;
+                break;
+            case DECAL_MODE_ALWAYS:
+                depthFunc = D3D11_COMPARISON_ALWAYS;
+                break;
+        }
+        depth_stencil_desc.DepthFunc = mCurrentDepthTest ? depthFunc : D3D11_COMPARISON_ALWAYS;
         depth_stencil_desc.StencilEnable = false;
 
         ThrowIfFailed(mDevice->CreateDepthStencilState(&depth_stencil_desc, mDepthStencilState.GetAddressOf()));
@@ -783,7 +790,12 @@ void GfxRenderingAPIDX11::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, siz
             default:
                 SSDB = -2;
         }
-        rasterizer_desc.SlopeScaledDepthBias = (mCurrentZmodeDecal && !mCurrentStrictDecal) ? SSDB : 0.0f;
+        rasterizer_desc.SlopeScaledDepthBias = 0.0f;
+        if (mCurrentZmodeDecal == DECAL_MODE_LEQUAL && !mCurrentStrictDecal) {
+            rasterizer_desc.SlopeScaledDepthBias = SSDB;
+        } else if (mCurrentZmodeDecal == DECAL_MODE_GEQUAL) {
+            rasterizer_desc.SlopeScaledDepthBias = -SSDB;
+        }
         rasterizer_desc.DepthBiasClamp = 0.0f;
         rasterizer_desc.DepthClipEnable = false;
         rasterizer_desc.ScissorEnable = true;
@@ -835,6 +847,7 @@ void GfxRenderingAPIDX11::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, siz
         memcpy(mPerDrawCbData.palette_params, mCombinerUniforms.palette_params, sizeof(mPerDrawCbData.palette_params));
         memcpy(mPerDrawCbData.lod_params, mCombinerUniforms.lod_params, sizeof(mPerDrawCbData.lod_params));
         memcpy(mPerDrawCbData.debug_tint, mCombinerUniforms.debug_tint, sizeof(mPerDrawCbData.debug_tint));
+        memcpy(mPerDrawCbData.alpha_ref, mCombinerUniforms.alpha_ref, sizeof(mPerDrawCbData.alpha_ref));
         memcpy(mPerDrawCbData.uCustom, mCustomUniforms.regs, sizeof(mPerDrawCbData.uCustom));
         D3D11_MAPPED_SUBRESOURCE ms;
         ZeroMemory(&ms, sizeof(D3D11_MAPPED_SUBRESOURCE));

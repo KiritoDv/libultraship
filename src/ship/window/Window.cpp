@@ -166,6 +166,14 @@ std::string Window::GetWindowBackendName() {
     return "";
 }
 
+void Window::SetTitle(const std::string& title) {
+    mTitle = title;
+}
+
+const std::string& Window::GetTitle() const {
+    return mTitle.empty() ? GetName() : mTitle;
+}
+
 std::shared_ptr<Config> Window::GetConfig() const {
     if (!mConfig) {
         throw std::runtime_error("Window requires Config dependency");

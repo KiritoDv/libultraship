@@ -182,6 +182,7 @@ cbuffer PerDrawCB : register(b1) {
     // Game-bindable register file; lockstep with PerDrawCB in gfx_direct3d_common.h
     float4 uCustom[16];
     float4 debug_tint; // HD-replacement debug tint: rgb = color, a = mix amount
+    float4 alpha_ref;
 }
 
 // 3 point texture filtering
@@ -244,7 +245,7 @@ PSInput VSMain(
 
     @if(o_fog)
         // N64 RSP fog from clip-space z/w;
-        // fog_params.w selects the source (0: computed, 1: constant, 2: vertex alpha)
+        // fog_params.w selects the source (0: computed, 1: constant, 2: vertex alpha, 3: linear eye depth)
         float fogZ = clipPos.z;
         float fogW = abs(clipPos.w) < 0.001 ? 0.001 : clipPos.w;
         float fogWinv = 1.0 / fogW;
@@ -252,10 +253,13 @@ PSInput VSMain(
             fogWinv = 32767.0;
         }
         float fogCalc = clamp(fogZ * fogWinv * fog_params.x + fog_params.y, 0.0, 255.0) / 255.0;
+        if (fog_params.w > 2.5) {
+            fogCalc = (clipPos.w - fog_params.x) * fog_params.y;
+        }
         @if(o_shade && o_alpha)
-            result.fogFactor = fog_params.w > 1.5 ? shade.a : (fog_params.w > 0.5 ? fog_params.z : fogCalc);
+            result.fogFactor = fog_params.w > 1.5 && fog_params.w < 2.5 ? shade.a : (fog_params.w > 0.5 && fog_params.w < 2.5 ? fog_params.z : fogCalc);
         @else
-            result.fogFactor = fog_params.w > 0.5 ? fog_params.z : fogCalc;
+            result.fogFactor = fog_params.w > 0.5 && fog_params.w < 2.5 ? fog_params.z : fogCalc;
         @end
     @end
 
@@ -263,7 +267,7 @@ PSInput VSMain(
         // Standard fog forces shade alpha to 1.0; blend-color mode preserves it
         float shadeAlpha = shade.a;
         @if(o_fog)
-            if (fog_params.w < 0.5 || fog_params.w > 1.5) {
+            if (fog_params.w < 0.5 || (fog_params.w > 1.5 && fog_params.w < 2.5)) {
                 shadeAlpha = 1.0;
             }
         @end
@@ -540,7 +544,7 @@ PSOutput PSMain(PSInput input, float4 screenSpace : SV_Position) {
     @end
 
     @if(o_texture_edge && o_alpha)
-        if (texel.a > 0.19) texel.a = 1.0; else discard;
+        if (texel.a > alpha_ref.x) texel.a = 1.0; else discard;
     @end
 
     texel = WRAP(texel, -0.51, 1.51);
@@ -548,9 +552,9 @@ PSOutput PSMain(PSInput input, float4 screenSpace : SV_Position) {
     // TODO discard if alpha is 0?
     @if(o_fog)
         @if(o_alpha)
-            texel = float4(lerp(texel.rgb, fog_color.rgb, input.fogFactor), texel.a);
+            texel = float4(lerp(texel.rgb, fog_color.rgb, saturate(input.fogFactor)), texel.a);
         @else
-            texel = lerp(texel, fog_color.rgb, input.fogFactor);
+            texel = lerp(texel, fog_color.rgb, saturate(input.fogFactor));
         @end
     @end
 
@@ -581,7 +585,7 @@ PSOutput PSMain(PSInput input, float4 screenSpace : SV_Position) {
 
     @if(o_alpha)
         @if(o_alpha_threshold)
-            if (texel.a < 8.0 / 256.0) discard;
+            if (texel.a < alpha_ref.y) discard;
         @end
         @if(o_invisible)
             texel.a = 0.0;

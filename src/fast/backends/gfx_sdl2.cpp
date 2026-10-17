@@ -639,6 +639,12 @@ void GfxWindowBackendSDL2::SetDimensions(uint32_t width, uint32_t height, int32_
     }
 }
 
+void GfxWindowBackendSDL2::SetTitle(const char* title) {
+    if (mWnd) {
+        SDL_SetWindowTitle(mWnd, title);
+    }
+}
+
 Ship::WindowRect GfxWindowBackendSDL2::GetPrimaryMonitorRect() {
     SDL_DisplayMode mode;
     int display_in_use = mWnd ? SDL_GetWindowDisplayIndex(mWnd) : 0;

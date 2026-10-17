@@ -47,17 +47,20 @@
         @end
         @if(o_fog)
             // N64 RSP fog from clip-space z/w; fog_params.w selects the source
-            // (0: computed, 1: constant register, 2: legacy vertex-alpha fallback)
+            // (0: computed, 1: constant register, 2: legacy vertex-alpha fallback, 3: linear eye depth)
             float fogW = abs(clipPos.w) < 0.001 ? 0.001 : clipPos.w;
             float fogWinv = 1.0 / fogW;
             if (fogWinv < 0.0) {
                 fogWinv = 32767.0;
             }
             float fogCalc = clamp(clipPos.z * fogWinv * drawU.fog_params.x + drawU.fog_params.y, 0.0, 255.0) / 255.0;
+            if (drawU.fog_params.w > 2.5) {
+                fogCalc = (clipPos.w - drawU.fog_params.x) * drawU.fog_params.y;
+            }
             @if(o_shade && o_alpha)
-                vFogFactor = drawU.fog_params.w > 1.5 ? aShade.a : (drawU.fog_params.w > 0.5 ? drawU.fog_params.z : fogCalc);
+                vFogFactor = drawU.fog_params.w > 1.5 && drawU.fog_params.w < 2.5 ? aShade.a : (drawU.fog_params.w > 0.5 && drawU.fog_params.w < 2.5 ? drawU.fog_params.z : fogCalc);
             @else
-                vFogFactor = drawU.fog_params.w > 0.5 ? drawU.fog_params.z : fogCalc;
+                vFogFactor = drawU.fog_params.w > 0.5 && drawU.fog_params.w < 2.5 ? drawU.fog_params.z : fogCalc;
             @end
         @end
         @if(o_texgen)
@@ -85,7 +88,7 @@
             // blend-color mode (fog mode 1) preserves the vertex alpha.
             float shadeAlpha = aShade.a;
             @if(o_fog)
-                if (drawU.fog_params.w < 0.5 || drawU.fog_params.w > 1.5) {
+                if (drawU.fog_params.w < 0.5 || (drawU.fog_params.w > 1.5 && drawU.fog_params.w < 2.5)) {
                     shadeAlpha = 1.0;
                 }
             @end

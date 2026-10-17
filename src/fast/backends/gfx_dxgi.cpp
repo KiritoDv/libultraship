@@ -758,6 +758,19 @@ void GfxWindowBackendDXGI::SetDimensions(uint32_t width, uint32_t height, int32_
     }
 }
 
+void GfxWindowBackendDXGI::SetTitle(const char* title) {
+    if (!h_wnd) {
+        return;
+    }
+    int len = MultiByteToWideChar(CP_UTF8, 0, title, -1, nullptr, 0);
+    if (len <= 0) {
+        return;
+    }
+    std::wstring wTitle(len, L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, title, -1, wTitle.data(), len);
+    SetWindowTextW(h_wnd, wTitle.c_str());
+}
+
 Ship::WindowRect GfxWindowBackendDXGI::GetPrimaryMonitorRect() {
     auto monitors = GetMonitorList();
     for (const auto& [hmon, rect, isPrimary] : monitors) {

@@ -157,13 +157,29 @@ int8_t GetEndOpcodeByUCode(UcodeHandlers ucode) {
         case ucode_f3dexb:
             return F3DEX_G_ENDDL;
         case ucode_f3dex2:
-        case ucode_s2dex: {
+        case ucode_s2dex:
+        case ucode_f3dex2_ac: {
             return F3DEX2_G_ENDDL;
         }
         case ucode_max:
             break;
     }
     return -1;
+}
+
+static void TerminateDisplayList(DisplayList& displayList) {
+    if (displayList.UCode >= ucode_max) {
+        return;
+    }
+
+    const int8_t endOpcode = GetEndOpcodeByUCode(displayList.UCode);
+    if (!displayList.Instructions.empty() && (int8_t)(displayList.Instructions.back().words.w0 >> 24) == endOpcode) {
+        return;
+    }
+
+    Gfx command = {};
+    command.words.w0 = (uintptr_t)(uint8_t)endOpcode << 24;
+    displayList.Instructions.push_back(command);
 }
 
 std::shared_ptr<Ship::IResource>
@@ -175,6 +191,13 @@ ResourceFactoryBinaryDisplayListV0::ReadResource(std::shared_ptr<Ship::File> fil
 
     auto displayList = std::make_shared<DisplayList>(initData);
     auto reader = std::get<std::shared_ptr<Ship::BinaryReader>>(file->Reader);
+
+    const size_t fileSize = file->Buffer->size();
+    if ((((size_t)reader->GetBaseAddress() + 1 + 7) & ~(size_t)7) > fileSize) {
+        SPDLOG_ERROR("Display list {} is truncated: missing header", initData->Path);
+        return nullptr;
+    }
+
     auto ucode = (UcodeHandlers)reader->ReadInt8();
 
     displayList->UCode = ucode;
@@ -184,7 +207,7 @@ ResourceFactoryBinaryDisplayListV0::ReadResource(std::shared_ptr<Ship::File> fil
     }
 
     size_t idx = 0;
-    while (true) {
+    while (reader->GetBaseAddress() + 8 <= fileSize) {
         Gfx command;
         command.words.w0 = reader->ReadUInt32();
         command.words.w1 = reader->ReadUInt32();
@@ -196,6 +219,9 @@ ResourceFactoryBinaryDisplayListV0::ReadResource(std::shared_ptr<Ship::File> fil
 
         // These are 128-bit commands, so read an extra 64 bits...
         if (isExpanded) {
+            if (reader->GetBaseAddress() + 8 > fileSize) {
+                break;
+            }
 #ifdef USE_GBI_TRACE
             command.words.trace.file = initData->Path.c_str();
             command.words.trace.idx = idx++;
@@ -219,6 +245,54 @@ ResourceFactoryBinaryDisplayListV0::ReadResource(std::shared_ptr<Ship::File> fil
         }
     }
 
+    TerminateDisplayList(*displayList);
+    return displayList;
+}
+
+std::shared_ptr<Ship::IResource>
+ResourceFactoryBinaryDisplayListV1::ReadResource(std::shared_ptr<Ship::File> file,
+                                                 std::shared_ptr<Ship::ResourceInitData> initData) {
+    if (!FileHasValidFormatAndReader(file, initData)) {
+        return nullptr;
+    }
+
+    auto displayList = std::make_shared<DisplayList>(initData);
+    auto reader = std::get<std::shared_ptr<Ship::BinaryReader>>(file->Reader);
+
+    const size_t fileSize = file->Buffer->size();
+    if ((((size_t)reader->GetBaseAddress() + 1 + 7) & ~(size_t)7) + 8 > fileSize) {
+        SPDLOG_ERROR("Display list {} is truncated: missing header", initData->Path);
+        return nullptr;
+    }
+
+    displayList->UCode = (UcodeHandlers)reader->ReadInt8();
+
+    while (reader->GetBaseAddress() % 8 != 0) {
+        reader->ReadInt8();
+    }
+
+    const uint32_t count = reader->ReadUInt32();
+    reader->ReadUInt32();
+
+    if (reader->GetBaseAddress() + (size_t)count * 8 > fileSize) {
+        SPDLOG_ERROR("Display list {} is truncated: {} commands declared", initData->Path, count);
+        return nullptr;
+    }
+
+    displayList->Instructions.reserve(count + 1);
+    for (uint32_t i = 0; i < count; i++) {
+        Gfx command;
+        command.words.w0 = reader->ReadUInt32();
+        command.words.w1 = reader->ReadUInt32();
+#ifdef USE_GBI_TRACE
+        command.words.trace.file = initData->Path.c_str();
+        command.words.trace.idx = i;
+        command.words.trace.valid = true;
+#endif
+        displayList->Instructions.push_back(command);
+    }
+
+    TerminateDisplayList(*displayList);
     return displayList;
 }
 

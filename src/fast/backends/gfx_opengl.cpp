@@ -103,6 +103,9 @@ void GfxRenderingAPIOGL::SetPerDrawUniforms() {
     if (mCurrentShaderProgram->debug_tint_location >= 0) {
         glUniform4fv(mCurrentShaderProgram->debug_tint_location, 1, mCombinerUniforms.debug_tint);
     }
+    if (mCurrentShaderProgram->alpha_ref_location >= 0) {
+        glUniform4fv(mCurrentShaderProgram->alpha_ref_location, 1, mCombinerUniforms.alpha_ref);
+    }
     if (mCurrentShaderProgram->custom_location >= 0) {
         glUniform4fv(mCurrentShaderProgram->custom_location, GFX_NUM_CUSTOM_UNIFORMS, &mCustomUniforms.regs[0][0]);
     }
@@ -643,6 +646,7 @@ ShaderProgram* GfxRenderingAPIOGL::CreateAndLoadNewShader(uint64_t shader_id0, u
     prg->palette_params_location = glGetUniformLocation(shader_program, "uPaletteParams");
     prg->lod_params_location = glGetUniformLocation(shader_program, "uLodParams");
     prg->debug_tint_location = glGetUniformLocation(shader_program, "uDebugTint");
+    prg->alpha_ref_location = glGetUniformLocation(shader_program, "uAlphaRef");
     prg->custom_location = glGetUniformLocation(shader_program, "uCustom");
 
     LoadShader(prg);
@@ -815,10 +819,6 @@ void GfxRenderingAPIOGL::SetCurrentPrimDepth(float depth) {
     }
 }
 
-void GfxRenderingAPIOGL::SetZmodeDecal(bool zmode_decal) {
-    mCurrentZmodeDecal = zmode_decal;
-}
-
 void GfxRenderingAPIOGL::SetStrictDecal(bool on) {
     mCurrentStrictDecal = on;
 }
@@ -869,9 +869,22 @@ void GfxRenderingAPIOGL::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, size
         if (mCurrentDepthTest || mLastDepthMask) {
             glEnable(GL_DEPTH_TEST);
             glDepthMask(mLastDepthMask ? GL_TRUE : GL_FALSE);
-            glDepthFunc(mCurrentDepthTest
-                            ? (mCurrentZmodeDecal ? (mCurrentStrictDecal ? GL_EQUAL : GL_LEQUAL) : GL_LEQUAL)
-                            : GL_ALWAYS);
+            GLenum depthFunc = GL_LEQUAL;
+            switch (mCurrentZmodeDecal) {
+                case DECAL_MODE_LEQUAL:
+                    depthFunc = mCurrentStrictDecal ? GL_EQUAL : GL_LEQUAL;
+                    break;
+                case DECAL_MODE_GEQUAL:
+                    depthFunc = GL_GEQUAL;
+                    break;
+                case DECAL_MODE_EQUAL:
+                    depthFunc = GL_EQUAL;
+                    break;
+                case DECAL_MODE_ALWAYS:
+                    depthFunc = GL_ALWAYS;
+                    break;
+            }
+            glDepthFunc(mCurrentDepthTest ? depthFunc : GL_ALWAYS);
         } else {
             glDisable(GL_DEPTH_TEST);
         }
@@ -879,7 +892,8 @@ void GfxRenderingAPIOGL::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, size
 
     if (mCurrentZmodeDecal != mLastZmodeDecal) {
         mLastZmodeDecal = mCurrentZmodeDecal;
-        if (mCurrentZmodeDecal && !mCurrentStrictDecal) {
+        if ((mCurrentZmodeDecal == DECAL_MODE_LEQUAL && !mCurrentStrictDecal) ||
+            mCurrentZmodeDecal == DECAL_MODE_GEQUAL) {
             // SSDB = SlopeScaledDepthBias 120 leads to -2 at 240p which is the same as N64 mode which has very little
             // fighting
             const int n64modeFactor = 120;
@@ -905,7 +919,8 @@ void GfxRenderingAPIOGL::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, size
                 default:
                     SSDB = -2;
             }
-            glPolygonOffset(SSDB, -2);
+            const GLfloat sign = mCurrentZmodeDecal == DECAL_MODE_GEQUAL ? -1.0f : 1.0f;
+            glPolygonOffset(sign * SSDB, sign * -2);
             glEnable(GL_POLYGON_OFFSET_FILL);
         } else {
             glPolygonOffset(0, 0);

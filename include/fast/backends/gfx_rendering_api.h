@@ -17,6 +17,14 @@ struct GfxClipParameters {
 
 enum FilteringMode { FILTER_THREE_POINT, FILTER_LINEAR, FILTER_NONE };
 
+enum DecalMode : int8_t {
+    DECAL_MODE_OFF,
+    DECAL_MODE_LEQUAL,
+    DECAL_MODE_GEQUAL,
+    DECAL_MODE_EQUAL,
+    DECAL_MODE_ALWAYS,
+};
+
 // Per-draw color-combiner constants, latched at flush time. The combiner
 // formula runs on the GPU; these are the RDP register operands it reads.
 // inputs[] is filled according to the combiner's shader_input_mapping.
@@ -31,7 +39,7 @@ struct CombinerUniforms {
     // Per texture: (clampS bound, clampT bound, unused, unused) in final UV space
     float texture_clamp[2][4];
     // Fog factor source: x = fog_mul, y = fog_offset, z = constant factor,
-    // w = mode (0: compute from z/w, 1: constant z, 2: vertex alpha)
+    // w = mode (0: compute from z/w, 1: constant z, 2: vertex alpha,
     float fog_params[4];
     // Per texel for CI index textures: x = palette bank entry offset (CI4 bank*16),
     // y = filter mode applied after the palette lookup (0 nearest, 1 bilinear, 2 three-point)
@@ -42,6 +50,7 @@ struct CombinerUniforms {
     // Debug tint for HD-replacement visualization: rgb = color, a = mix amount
     // (0 = no tint, the normal case). Applied in the fragment shader after clamp.
     float debug_tint[4];
+    float alpha_ref[4];
 };
 
 constexpr int GFX_MAX_GPU_LIGHTS = 32;
@@ -126,7 +135,9 @@ class GfxRenderingAPI {
     }
     virtual void SetSamplerParameters(int sampler, bool linear_filter, uint32_t cms, uint32_t cmt) = 0;
     virtual void SetDepthTestAndMask(bool depth_test, bool z_upd) = 0;
-    virtual void SetZmodeDecal(bool decal) = 0;
+    virtual void SetDecalMode(DecalMode mode) {
+        mCurrentZmodeDecal = mode;
+    }
     virtual void SetStrictDecal(bool on) = 0;
     virtual void SetViewport(int x, int y, int width, int height) = 0;
     virtual void SetScissor(int x, int y, int width, int height) = 0;

@@ -486,10 +486,6 @@ void GfxRenderingAPIMetal::SetCurrentMaxLod(float maxLod) {
     }
 }
 
-void GfxRenderingAPIMetal::SetZmodeDecal(bool zmode_decal) {
-    mCurrentZmodeDecal = zmode_decal;
-}
-
 void GfxRenderingAPIMetal::SetStrictDecal(bool on) {
     mCurrentStrictDecal = on;
 }
@@ -540,13 +536,24 @@ void GfxRenderingAPIMetal::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, si
 
         MTL::DepthStencilDescriptor* depth_descriptor = MTL::DepthStencilDescriptor::alloc()->init();
         depth_descriptor->setDepthWriteEnabled(mCurrentDepthMask);
-        depth_descriptor->setDepthCompareFunction(
-            mCurrentDepthTest ? (mCurrentZmodeDecal
-                                     ? (mCurrentStrictDecal ? MTL::CompareFunctionEqual : MTL::CompareFunctionLessEqual)
-                                     // LessEqual (not Less) so coplanar transparent overlays
-                                     // (e.g. DynOS recolorable parts) at equal depth still draw
-                                     : MTL::CompareFunctionLessEqual)
-                              : MTL::CompareFunctionAlways);
+        // LessEqual (not Less) so coplanar transparent overlays
+        // (e.g. DynOS recolorable parts) at equal depth still draw
+        MTL::CompareFunction depthFunc = MTL::CompareFunctionLessEqual;
+        switch (mCurrentZmodeDecal) {
+            case DECAL_MODE_LEQUAL:
+                depthFunc = mCurrentStrictDecal ? MTL::CompareFunctionEqual : MTL::CompareFunctionLessEqual;
+                break;
+            case DECAL_MODE_GEQUAL:
+                depthFunc = MTL::CompareFunctionGreaterEqual;
+                break;
+            case DECAL_MODE_EQUAL:
+                depthFunc = MTL::CompareFunctionEqual;
+                break;
+            case DECAL_MODE_ALWAYS:
+                depthFunc = MTL::CompareFunctionAlways;
+                break;
+        }
+        depth_descriptor->setDepthCompareFunction(mCurrentDepthTest ? depthFunc : MTL::CompareFunctionAlways);
 
         MTL::DepthStencilState* depth_stencil_state = mDevice->newDepthStencilState(depth_descriptor);
         current_framebuffer.mCommandEncoder->setDepthStencilState(depth_stencil_state);
@@ -576,8 +583,13 @@ void GfxRenderingAPIMetal::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, si
             default:
                 SSDB = -2;
         }
-        current_framebuffer.mCommandEncoder->setDepthBias(0, (mCurrentZmodeDecal && !mCurrentStrictDecal) ? SSDB : 0,
-                                                          0);
+        float bias = 0.0f;
+        if (mCurrentZmodeDecal == DECAL_MODE_LEQUAL && !mCurrentStrictDecal) {
+            bias = SSDB;
+        } else if (mCurrentZmodeDecal == DECAL_MODE_GEQUAL) {
+            bias = -SSDB;
+        }
+        current_framebuffer.mCommandEncoder->setDepthBias(0, bias, 0);
     }
 
     MTL::Buffer* vertex_buffer = mVertexBufferPool[mCurrentVertexBufferPoolIndex];
@@ -670,6 +682,8 @@ void GfxRenderingAPIMetal::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, si
                                                  mCombinerUniforms.lod_params[2], mCombinerUniforms.lod_params[3] };
         mDrawUniforms.debug_tint = simd::float4{ mCombinerUniforms.debug_tint[0], mCombinerUniforms.debug_tint[1],
                                                  mCombinerUniforms.debug_tint[2], mCombinerUniforms.debug_tint[3] };
+        mDrawUniforms.alpha_ref = simd::float4{ mCombinerUniforms.alpha_ref[0], mCombinerUniforms.alpha_ref[1],
+                                                mCombinerUniforms.alpha_ref[2], mCombinerUniforms.alpha_ref[3] };
         for (int i = 0; i < GFX_NUM_CUSTOM_UNIFORMS; i++) {
             mDrawUniforms.uCustom[i] = simd::float4{ mCustomUniforms.regs[i][0], mCustomUniforms.regs[i][1],
                                                      mCustomUniforms.regs[i][2], mCustomUniforms.regs[i][3] };

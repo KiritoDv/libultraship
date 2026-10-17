@@ -225,6 +225,7 @@ struct TextureCacheKey {
     // 1 = uploaded as a CI index texture (palette applied in the shader). Indexed
     // entries do not key on palette contents, which is what makes TLUT swaps free.
     uint8_t indexed;
+    uint64_t palette_hash;
 
     bool operator==(const TextureCacheKey&) const noexcept = default;
 
@@ -284,6 +285,7 @@ struct RSP {
 
     float MP_matrix[4][4];
     float P_matrix[4][4];
+    float loaded_P_matrix[4][4];
 
     F3DLight_t lookat[2];
     F3DLight current_lights[MAX_LIGHTS + 1];
@@ -298,8 +300,7 @@ struct RSP {
     uint32_t extra_geometry_mode;
 
     struct {
-        // U0.16
-        uint16_t s, t;
+        uint32_t s, t;
     } texture_scaling_factor;
 
     // Max mip level from gsSPTexture (number of mip levels - 1). 0 = no mipmapping.
@@ -317,6 +318,8 @@ struct RDP {
     // palette). palettes[0] covers indices 0-7 (256 bytes), palettes[1] covers 8-15 (256 bytes). GfxDpLoadTlut copies
     // TLUT data here at the correct offset so multi-palette CI4 models work.
     uint8_t palette_staging[2][256];
+    uint8_t palette_rgba32[256][4];
+    bool palette_half_rgba32[2];
     struct {
         const uint8_t* addr;
         uint8_t siz;
@@ -370,6 +373,9 @@ struct RDP {
     uint64_t combine_mode;
     bool grayscale;
 
+    uint8_t tex_edge_alpha;
+    uint8_t texture_adjust_mode;
+
     uint8_t prim_lod_fraction;
     // Minimum LOD clamp from gsDPSetPrimColor's m parameter (sharpen/detail modes)
     uint8_t prim_lod_min;
@@ -422,7 +428,7 @@ struct ColorCombiner {
 
 struct RenderingState {
     uint8_t depth_test_and_mask; // 1: depth test, 2: depth mask
-    bool decal_mode;
+    DecalMode decal_mode;
     bool alpha_blend;
     // GPU backface culling: sign of the kept RSP cross product (0 = no culling)
     int8_t cull_keep_sign;
@@ -549,6 +555,7 @@ class Interpreter {
     bool TextureCacheLookup(int i, const TextureCacheKey& key);
     void TextureCacheDelete(const uint8_t* origAddr);
     void TextureCacheDeleteByPalette(const uint8_t* palAddr);
+    void TextureCacheDeleteRange(const uint8_t* addr, size_t size);
     void ImportTextureRgba16(int tile, bool importReplacement);
     void ImportTextureRgba32(int tile, bool importReplacement);
     void ImportTextureIA4(int tile, bool importReplacement);
@@ -577,6 +584,7 @@ class Interpreter {
     void GfxSpVertex(size_t numVertices, size_t destIndex, const F3DVtx* vertices);
     void GfxSpModifyVertex(uint16_t vtxIdx, uint8_t where, uint32_t val);
     void GfxSpTri1(uint8_t vtx1Idx, uint8_t vtx2Idx, uint8_t vtx3Idx, bool isRect);
+    bool UseBilerpHalfTexel(bool isRect) const;
     void GfxSpGeometryMode(uint32_t clear, uint32_t set);
     void GfxSpExtraGeometryMode(uint32_t clear, uint32_t set);
     void GfxSpMovememF3dex2(uint8_t index, uint8_t offset, const void* data);
@@ -619,9 +627,11 @@ class Interpreter {
                                    uint32_t nativeHeight) const;
     float AdjXForAspectRatio(float x) const;
     void AdjustVIewportOrScissor(XYWidthHeight* area);
+    void AdjustPartialAreaForAspectRatio(XYWidthHeight* area, bool keepWidth);
     void CalcAndSetViewport(const F3DVp_t* viewport);
 
     void SpReset();
+    void AcFrameReset();
     void* SegAddr(uintptr_t w1);
 
     static const char* CCMUXtoStr(uint32_t ccmux);
@@ -655,6 +665,7 @@ class Interpreter {
     float mTextureClamp[2][4]{};
     float mFogParams[4]{};
     float mLodParams[4]{};
+    float mAlphaRef[4]{};
 
     // GPU vertex transform: history of recent model-view-projection matrices
     // (aspect scale folded in) captured at vertex-load time. Each LoadedVertex
@@ -822,6 +833,18 @@ class Interpreter {
 };
 
 void gfx_set_target_ucode(UcodeHandlers ucode);
+UcodeHandlers gfx_get_current_ucode();
+typedef void (*GfxTrinEmitFunc)(void* ctx, uint32_t v0, uint32_t v1, uint32_t v2);
+size_t GfxTrinDecodeAc(const F3DGfx* cmd, GfxTrinEmitFunc emit, void* ctx);
+bool GfxAcGxFogRange(const float projection[4][4], int16_t fogMul, int16_t fogOffset, float* start, float* end);
+void GfxStageTlut(RDP* rdp, uint16_t tmem, uint32_t count, const uint8_t* src, bool rgba32,
+                  uint32_t srcEntries = UINT32_MAX);
+void GfxTlutToRgba32(const RDP* rdp, uint32_t first, uint32_t count, uint8_t* dst);
+uint64_t GfxHashTlutContent(const RDP* rdp);
+bool GfxDecodeTileToRgba32(uint8_t fmt, uint8_t siz, const uint8_t* src, uint32_t strideBytes, uint32_t width,
+                           uint32_t height, const RDP* rdp, uint8_t paletteIndex, uint8_t* dst);
+void GfxWidenFullScreenFill(uint32_t targetWidth, uint32_t targetHeight, int32_t* ulx, int32_t* uly, int32_t* lrx,
+                            int32_t* lry);
 const char* gfx_get_current_ucode_name();
 void gfx_push_current_dir(char* path);
 int32_t gfx_check_image_signature(const char* imgData);
@@ -837,6 +860,7 @@ const char* GfxGetOpcodeName(int8_t opcode);
 } // namespace Fast
 
 extern "C" void gfx_texture_cache_clear();
+extern "C" void gfx_texture_cache_invalidate_range(const void* addr, size_t size);
 extern "C" void gfx_set_custom_uniform(uint8_t idx, const float values[4]);
 extern "C" int gfx_register_post_pass(const char* o2rShaderPath);
 extern "C" void gfx_unregister_post_pass(int id);
