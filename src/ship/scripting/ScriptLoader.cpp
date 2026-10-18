@@ -2,10 +2,13 @@
 
 #ifdef ENABLE_SCRIPTING
 
+#include "libultraship/bridge/eventsbridge.h"
+#include "ship/events/Events.h"
 #include "ship/resource/ResourceManager.h"
 #include "ship/resource/archive/Archive.h"
 #include "ship/resource/File.h"
 #include "spdlog/spdlog.h"
+#include <algorithm>
 #include <optional>
 #include <sstream>
 #include <string_view>
@@ -78,6 +81,75 @@ constexpr std::string_view GetPlatform() {
 #endif
 }
 
+static std::vector<uint32_t> ParseVersion(std::string_view version) {
+    std::vector<uint32_t> parts;
+    uint32_t value = 0;
+    bool digits = false;
+    for (const char c : version) {
+        if (c >= '0' && c <= '9') {
+            value = value * 10 + (c - '0');
+            digits = true;
+        } else if (c == '.') {
+            parts.push_back(value);
+            value = 0;
+            digits = false;
+        } else {
+            break;
+        }
+    }
+    if (digits || parts.empty()) {
+        parts.push_back(value);
+    }
+    return parts;
+}
+
+static int CompareVersions(std::string_view a, std::string_view b) {
+    const auto left = ParseVersion(a);
+    const auto right = ParseVersion(b);
+    for (size_t i = 0; i < std::max(left.size(), right.size()); i++) {
+        const uint32_t l = i < left.size() ? left[i] : 0;
+        const uint32_t r = i < right.size() ? right[i] : 0;
+        if (l != r) {
+            return l < r ? -1 : 1;
+        }
+    }
+    return 0;
+}
+
+// A range is a list of comparisons separated by spaces or commas, e.g. ">=1.2 <2". A version without an operator
+// is a minimum.
+static bool VersionInRange(std::string_view version, std::string_view range) {
+    size_t pos = 0;
+    while (pos < range.size()) {
+        const size_t start = range.find_first_not_of(" ,", pos);
+        if (start == std::string_view::npos) {
+            break;
+        }
+        const size_t end = std::min(range.find_first_of(" ,", start), range.size());
+        std::string_view term = range.substr(start, end - start);
+        pos = end;
+
+        std::string_view op = ">=";
+        for (const std::string_view candidate : { ">=", "<=", ">", "<", "=" }) {
+            if (term.starts_with(candidate)) {
+                op = candidate;
+                term.remove_prefix(candidate.size());
+                break;
+            }
+        }
+        const int cmp = CompareVersions(version, term);
+        const bool ok = op == ">="   ? cmp >= 0
+                        : op == "<=" ? cmp <= 0
+                        : op == ">"  ? cmp > 0
+                        : op == "<"  ? cmp < 0
+                                     : cmp == 0;
+        if (!ok) {
+            return false;
+        }
+    }
+    return true;
+}
+
 void ScriptLoader::Compile(const std::shared_ptr<Archive>& archive) {
     const ArchiveManifest& info = archive->GetManifest();
     constexpr std::string_view platform = GetPlatform();
@@ -93,9 +165,13 @@ void ScriptLoader::Compile(const std::shared_ptr<Archive>& archive) {
     }
 
     if (info.CodeVersion != mCodeVersion) {
-        SPDLOG_ERROR("Incompatible code version for archive {}: expected {}, got {}", archive->GetPath(), mCodeVersion,
-                     info.CodeVersion);
-        return;
+        throw std::runtime_error("built for code version " + std::to_string(info.CodeVersion) +
+                                 ", this build needs code version " + std::to_string(mCodeVersion));
+    }
+
+    if (info.ApiVersion > mApiVersion) {
+        throw std::runtime_error("needs API version " + std::to_string(info.ApiVersion) + ", this build has " +
+                                 std::to_string(mApiVersion));
     }
 
     const bool isTrusted = archive->IsSigned() && archive->IsChecksumValid();
@@ -252,7 +328,7 @@ void ScriptLoader::Compile(const std::shared_ptr<Archive>& archive) {
                 throw std::runtime_error("Failed to load script file: '" + safePath + "'");
             }
 
-            std::string lineFixer = "#line 1 \"[" + info.Name + "]:" + safePath + "\"\n";
+            std::string lineFixer = "#line 1 \"" + GetSourcePrefix(info.Name) + safePath + "\"\n";
             std::string sourceCode = lineFixer + std::string(buf->begin(), buf->end());
             if (tcc_compile_string(s, sourceCode.c_str()) == -1) {
                 tcc_delete(s);
@@ -300,35 +376,55 @@ void ScriptLoader::CompileAll(const std::optional<std::function<void(const std::
     }
 }
 
-std::vector<std::string> ScriptLoader::GetLoadersInDependencyOrder() const {
-    std::vector<std::string> orderedLoaders;
-
-    std::vector<std::string> loadOrder;
+std::vector<std::string> ScriptLoader::GetLoadersInDependencyOrder(std::vector<std::string>* errors) const {
     std::unordered_map<std::string, std::shared_ptr<Archive>> archiveMap;
-    std::unordered_map<std::string, int> inDegree;
-    std::unordered_map<std::string, std::vector<std::string>> dependents;
-
     for (const auto& entry : mLoadedArchives) {
         const auto& info = entry->GetManifest();
-
-        if (!mLoadedScripts.contains(info.Name)) {
-            continue;
+        if (mLoadedScripts.contains(info.Name)) {
+            archiveMap[info.Name] = entry;
         }
-
-        archiveMap[info.Name] = entry;
-        inDegree[info.Name] = 0;
     }
 
-    for (const auto& [name, entry] : archiveMap) {
-        const auto& deps = entry->GetManifest().Dependencies;
-        for (const std::string& depName : deps) {
-            if (archiveMap.contains(depName)) {
-                dependents[depName].push_back(name);
-                inDegree[name]++;
-            } else {
-                throw std::runtime_error("Loaded archive " + name +
-                                         " depends on missing or unloaded archive: " + depName);
+    const auto skip = [&](const std::string& name, const std::string& reason) {
+        SPDLOG_ERROR("Skipping script {}: {}", name, reason);
+        if (errors != nullptr) {
+            errors->push_back(name + ": " + reason);
+        }
+        archiveMap.erase(name);
+    };
+
+    for (bool changed = true; changed;) {
+        changed = false;
+        std::vector<std::pair<std::string, std::string>> skipped;
+        for (const auto& [name, entry] : archiveMap) {
+            const auto& info = entry->GetManifest();
+            for (const std::string& depName : info.Dependencies) {
+                const auto dep = archiveMap.find(depName);
+                if (dep == archiveMap.end()) {
+                    skipped.emplace_back(name, "needs " + depName + ", which is missing or did not load");
+                    break;
+                }
+                const auto range = info.DependencyVersions.find(depName);
+                const std::string& version = dep->second->GetManifest().Version;
+                if (range != info.DependencyVersions.end() && !VersionInRange(version, range->second)) {
+                    skipped.emplace_back(name, "needs " + depName + " " + range->second + ", found " + version);
+                    break;
+                }
             }
+        }
+        for (const auto& [name, reason] : skipped) {
+            skip(name, reason);
+            changed = true;
+        }
+    }
+
+    std::unordered_map<std::string, int> inDegree;
+    std::unordered_map<std::string, std::vector<std::string>> dependents;
+    for (const auto& [name, entry] : archiveMap) {
+        inDegree.try_emplace(name, 0);
+        for (const std::string& depName : entry->GetManifest().Dependencies) {
+            dependents[depName].push_back(name);
+            inDegree[name]++;
         }
     }
 
@@ -339,6 +435,7 @@ std::vector<std::string> ScriptLoader::GetLoadersInDependencyOrder() const {
         }
     }
 
+    std::vector<std::string> loadOrder;
     while (!readyQueue.empty()) {
         std::string current = readyQueue.front();
         readyQueue.pop();
@@ -354,42 +451,83 @@ std::vector<std::string> ScriptLoader::GetLoadersInDependencyOrder() const {
         }
     }
 
-    if (loadOrder.size() != archiveMap.size()) {
-        throw std::runtime_error("Circular dependency detected among loaded scripts. Failed to resolve init order.");
+    for (const auto& [name, degree] : inDegree) {
+        if (degree > 0) {
+            skip(name, "its dependencies form a cycle");
+        }
     }
 
-    for (const std::string& name : loadOrder) {
-        orderedLoaders.push_back(name);
-    }
+    return loadOrder;
+}
 
-    return orderedLoaders;
+void ScriptLoader::CallEntry(const std::string& name, const std::string& symbol) {
+    const auto entry = (Scripting::LibraryFunc_t)mLoadedScripts.at(name).GetFunction(symbol);
+    if (mEntryHook) {
+        mEntryHook(name, symbol, entry);
+    } else if (entry) {
+        entry();
+    }
+}
+
+void ScriptLoader::RemoveListeners(const std::string& name) {
+    const auto events = EventSystemGetEvents();
+    if (events == nullptr) {
+        return;
+    }
+    const std::string prefix = GetSourcePrefix(name);
+    const auto fromScript = [&prefix](const char* path) {
+        return path != nullptr && std::string_view(path).starts_with(prefix);
+    };
+    size_t removed = 0;
+    for (auto& [id, registration] : events->GetEventRegistrations()) {
+        removed += std::erase_if(registration.Listeners,
+                                 [&](const EventListener& listener) { return fromScript(listener.Metadata.Path); });
+        std::erase_if(registration.Callers, [&](const auto& caller) { return fromScript(caller.first); });
+    }
+    if (removed > 0) {
+        SPDLOG_INFO("Removed {} event listeners left by script {}", removed, name);
+    }
 }
 
 void ScriptLoader::LoadAll() {
-    auto loaders = GetLoadersInDependencyOrder();
-    for (const auto& id : loaders) {
-        auto& loader = mLoadedScripts.at(id);
-        SPDLOG_INFO("Initializing script: {}", id);
-        const auto init = (Scripting::LibraryFunc_t)loader.GetFunction("ModInit");
-        if (init) {
-            init();
+    mLoadErrors.clear();
+    for (const auto& id : GetLoadersInDependencyOrder(&mLoadErrors)) {
+        if (std::find(mInitializedScripts.begin(), mInitializedScripts.end(), id) != mInitializedScripts.end()) {
+            continue;
         }
+        SPDLOG_INFO("Initializing script: {}", id);
+        mInitializedScripts.push_back(id);
+        CallEntry(id, "ModInit");
     }
 }
+
 void ScriptLoader::UnloadAll() {
-    auto loaders = GetLoadersInDependencyOrder();
-    for (auto it = loaders.rbegin(); it != loaders.rend(); ++it) {
-        auto& loader = mLoadedScripts.at(*it);
+    for (auto it = mInitializedScripts.rbegin(); it != mInitializedScripts.rend(); ++it) {
         SPDLOG_INFO("Uninitialize script: {}", *it);
-        const auto exit = (Scripting::LibraryFunc_t)loader.GetFunction("ModExit");
-
-        if (exit) {
-            exit();
-        }
-
+        CallEntry(*it, "ModExit");
+    }
+    for (auto& [name, loader] : mLoadedScripts) {
+        RemoveListeners(name);
         loader.Unload();
     }
+    mInitializedScripts.clear();
     mLoadedScripts.clear();
+}
+
+const std::vector<std::string>& ScriptLoader::GetLoadErrors() const {
+    return mLoadErrors;
+}
+
+void ScriptLoader::SetEntryHook(EntryHook hook) {
+    mEntryHook = std::move(hook);
+}
+
+void ScriptLoader::SetApiVersion(uint32_t apiVersion) {
+    mApiVersion = apiVersion;
+}
+
+std::string ScriptLoader::GetSourcePrefix(const std::string& name) {
+    return "[" + name + "]:";
 }
 
 void* ScriptLoader::GetFunction(const std::string& name, const std::string& function) {

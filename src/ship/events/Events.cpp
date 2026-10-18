@@ -56,7 +56,10 @@ void Events::CallEvent(const EventID id, IEvent* event, const char* file, const 
     auto& registry = this->mEventRegistry[id];
 
     for (auto& listener : registry.Listeners) {
+        const char* previous = mActiveListenerPath;
+        mActiveListenerPath = listener.Metadata.Path;
         listener.Function(event);
+        mActiveListenerPath = previous;
     }
 
     auto& info = registry.Callers[key];

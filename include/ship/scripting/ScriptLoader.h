@@ -41,6 +41,15 @@ enum class SafeLevel {
 class ScriptLoader : public Component {
   public:
     /**
+     * @brief Called in place of a script's ModInit and ModExit.
+     *
+     * @p entry is the script's function, or nullptr when the script doesn't export it. The hook must call it
+     * itself, which lets the host run code around it, e.g. to tell which script registers what.
+     */
+    using EntryHook =
+        std::function<void(const std::string& name, const std::string& symbol, Scripting::LibraryFunc_t entry)>;
+
+    /**
      * @brief Constructs a ScriptLoader with the given compiler configuration.
      * @param compileDefines Preprocessor defines passed to the compiler.
      * @param codeVersion    Version tag embedded in compiled modules for compatibility checks.
@@ -81,8 +90,34 @@ class ScriptLoader : public Component {
 
     /**
      * @brief Unloads all currently loaded script modules.
+     *
+     * Each initialized script's ModExit runs first, in reverse load order. Event listeners registered from a
+     * script's sources and still present afterwards are removed before its code is freed.
      */
     void UnloadAll();
+
+    /**
+     * @brief Returns why scripts were skipped by the last LoadAll(): missing or incompatible dependencies and
+     * dependency cycles.
+     */
+    const std::vector<std::string>& GetLoadErrors() const;
+
+    /**
+     * @brief Sets the hook called in place of each script's ModInit and ModExit.
+     */
+    void SetEntryHook(EntryHook hook);
+
+    /**
+     * @brief Sets the host API version. Archives asking for a higher api_version are not compiled.
+     */
+    void SetApiVersion(uint32_t apiVersion);
+
+    /**
+     * @brief Returns the prefix of the file names TCC gives a script's sources, "[name]:".
+     *
+     * __FILE__ and the event listener metadata of code compiled from the script start with it.
+     */
+    static std::string GetSourcePrefix(const std::string& name);
 
     /**
      * @brief Looks up a function exported by a loaded script module.
@@ -94,9 +129,14 @@ class ScriptLoader : public Component {
 
     /**
      * @brief Returns the names of all loaded script modules sorted in dependency order.
+     *
+     * Modules whose dependencies are missing, don't match the version range they ask for or form a cycle are left
+     * out, as are the modules depending on them.
+     *
+     * @param errors Optional list that receives why each module was left out.
      * @return Ordered vector of module names, with dependencies listed before dependents.
      */
-    std::vector<std::string> GetLoadersInDependencyOrder() const;
+    std::vector<std::string> GetLoadersInDependencyOrder(std::vector<std::string>* errors = nullptr) const;
 
     /**
      * @brief Sets the security level for script loading.
@@ -105,7 +145,14 @@ class ScriptLoader : public Component {
     void SetSafeLevel(SafeLevel level);
 
   private:
+    void CallEntry(const std::string& name, const std::string& symbol);
+    void RemoveListeners(const std::string& name);
+
     uint32_t mCodeVersion;
+    uint32_t mApiVersion = 0;
+    EntryHook mEntryHook;
+    std::vector<std::string> mInitializedScripts;
+    std::vector<std::string> mLoadErrors;
     SafeLevel mSafeLevel = SafeLevel::WARN_UNTRUSTED_SCRIPTS;
     std::string mBuildOptions = "-g -Wl";
     std::vector<std::string> mIncludePaths;
