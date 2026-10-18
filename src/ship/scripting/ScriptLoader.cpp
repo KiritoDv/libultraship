@@ -418,19 +418,27 @@ std::vector<std::string> ScriptLoader::GetLoadersInDependencyOrder(std::vector<s
         }
     }
 
+    std::vector<std::string> names;
+    for (const auto& entry : mLoadedArchives) {
+        const std::string& name = entry->GetManifest().Name;
+        if (archiveMap.contains(name) && std::find(names.begin(), names.end(), name) == names.end()) {
+            names.push_back(name);
+        }
+    }
+
     std::unordered_map<std::string, int> inDegree;
     std::unordered_map<std::string, std::vector<std::string>> dependents;
-    for (const auto& [name, entry] : archiveMap) {
+    for (const std::string& name : names) {
         inDegree.try_emplace(name, 0);
-        for (const std::string& depName : entry->GetManifest().Dependencies) {
+        for (const std::string& depName : archiveMap.at(name)->GetManifest().Dependencies) {
             dependents[depName].push_back(name);
             inDegree[name]++;
         }
     }
 
     std::queue<std::string> readyQueue;
-    for (const auto& [name, degree] : inDegree) {
-        if (degree == 0) {
+    for (const std::string& name : names) {
+        if (inDegree[name] == 0) {
             readyQueue.push(name);
         }
     }
@@ -451,8 +459,8 @@ std::vector<std::string> ScriptLoader::GetLoadersInDependencyOrder(std::vector<s
         }
     }
 
-    for (const auto& [name, degree] : inDegree) {
-        if (degree > 0) {
+    for (const std::string& name : names) {
+        if (inDegree[name] > 0) {
             skip(name, "its dependencies form a cycle");
         }
     }
