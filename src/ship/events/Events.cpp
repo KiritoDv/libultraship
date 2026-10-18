@@ -21,9 +21,9 @@ ListenerID Events::RegisterListener(EventID id, EventCallback callback, EventPri
     auto& registry = this->mEventRegistry[id];
     const EventListener newListener = { registry.NextListenerID++, priority, callback, { file, line, 0 } };
 
-    auto insertIt = std::lower_bound(registry.Listeners.begin(), registry.Listeners.end(), newListener,
-                                     [](const EventListener& existingListener, const EventListener& listenerToInsert) {
-                                         return existingListener.Priority < listenerToInsert.Priority;
+    auto insertIt = std::upper_bound(registry.Listeners.begin(), registry.Listeners.end(), newListener,
+                                     [](const EventListener& listenerToInsert, const EventListener& existingListener) {
+                                         return listenerToInsert.Priority > existingListener.Priority;
                                      });
 
     registry.Listeners.insert(insertIt, newListener);
