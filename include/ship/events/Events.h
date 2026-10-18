@@ -131,9 +131,19 @@ class Events : public Component {
         return this->mEventRegistry;
     }
 
+    /**
+     * @brief Returns the registration file of the listener being called, or nullptr outside of a listener.
+     *
+     * Lets the host tell which script a call made from inside a listener comes from.
+     */
+    const char* GetActiveListenerPath() const {
+        return mActiveListenerPath;
+    }
+
   private:
     std::unordered_map<EventID, EventRegistration> mEventRegistry;
     EventID mInternalEventID = 0;
+    const char* mActiveListenerPath = nullptr;
 };
 
 } // namespace Ship

@@ -68,10 +68,23 @@ void Archive::Load() {
             mManifest.Description = json.value("description", "No description provided.");
             mManifest.License = json.value("license", "All rights reserved");
             mManifest.CodeVersion = json.value("code_version", 1);
+            mManifest.ApiVersion = json.value("api_version", 0);
             mManifest.GameVersion = json.value("game_version", 0xFFFFFFFF);
             mManifest.Main = json.value("main", "");
             mManifest.Binaries = json.value("binaries", std::unordered_map<std::string, std::string>{});
-            mManifest.Dependencies = json.value("dependencies", std::vector<std::string>{});
+            mManifest.Dependencies.clear();
+            mManifest.DependencyVersions.clear();
+            for (const auto& dependency : json.value("dependencies", nlohmann::json::array())) {
+                if (dependency.is_string()) {
+                    mManifest.Dependencies.push_back(dependency.get<std::string>());
+                } else if (dependency.is_object() && dependency.contains("name")) {
+                    const auto name = dependency["name"].get<std::string>();
+                    mManifest.Dependencies.push_back(name);
+                    if (dependency.contains("version")) {
+                        mManifest.DependencyVersions[name] = dependency["version"].get<std::string>();
+                    }
+                }
+            }
             mManifest.Checksum = json.value("checksum", "");
             mManifest.Signature = json.value("signature", "");
             mManifest.PublicKey = json.value("public_key", "");

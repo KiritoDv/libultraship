@@ -37,11 +37,13 @@ struct ArchiveManifest {
     std::string License;     ///< SPDX license identifier or URL.
 
     uint32_t CodeVersion; ///< API version of compiled script modules bundled with this archive.
+    uint32_t ApiVersion;  ///< Lowest host API version the scripts need, 0 when not given.
     uint32_t GameVersion; ///< Numeric game version this archive targets.
 
     std::string Main;                                      ///< Entry-point script path within the archive.
     std::unordered_map<std::string, std::string> Binaries; ///< Platform → binary path map for bundled native libs.
     std::vector<std::string> Dependencies;                 ///< Archive names that must be loaded before this one.
+    std::unordered_map<std::string, std::string> DependencyVersions; ///< Dependency name → version range, e.g. ">=1.2".
 
     std::string Checksum;  ///< Hex-encoded SHA-256 checksum of the archive contents.
     std::string Signature; ///< Base64-encoded digital signature over the checksum.
