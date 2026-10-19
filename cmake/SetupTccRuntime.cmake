@@ -1,4 +1,4 @@
-# lus_setup_tcc_runtime(TARGET_NAME [RESOURCES_DIR <dest>])
+# lus_setup_tcc_runtime(TARGET_NAME [RESOURCES_DIR <dest>] [STAGE_DIR <dir>])
 #
 # Adds post-build staging + install rules for the TCC runtime files that
 # ScriptLoader expects at runtime:
@@ -16,12 +16,16 @@
 #   RESOURCES_DIR  — Install destination for the .tcc/ tree.
 #                    Defaults to ".tcc" (next to the binary).
 #                    Pass "../Resources/.tcc" for macOS app bundles.
+#   STAGE_DIR      — Where POST_BUILD stages the .tcc/ tree.
+#                    Defaults to <target_file_dir>/.tcc. On Android the
+#                    tree is packed into the APK from here, with bionic's
+#                    headers under sysinclude/.
 #
 # Must be called after add_subdirectory(libultraship) so that the tinycc
 # FetchContent population has already happened inside libultraship.
 
 function(lus_setup_tcc_runtime TARGET_NAME)
-    cmake_parse_arguments(PARSE_ARGV 1 LUS_TCC "" "RESOURCES_DIR" "")
+    cmake_parse_arguments(PARSE_ARGV 1 LUS_TCC "" "RESOURCES_DIR;STAGE_DIR" "")
 
     if(NOT ENABLE_SCRIPTING OR NOT ENABLE_TCC_COMPILER)
         return()
@@ -38,12 +42,31 @@ function(lus_setup_tcc_runtime TARGET_NAME)
         set(LUS_TCC_RESOURCES_DIR ".tcc")
     endif()
 
-    set(_stage "$<TARGET_FILE_DIR:${TARGET_NAME}>/.tcc")
+    if(LUS_TCC_STAGE_DIR)
+        set(_stage "${LUS_TCC_STAGE_DIR}")
+    else()
+        set(_stage "$<TARGET_FILE_DIR:${TARGET_NAME}>/.tcc")
+    endif()
+
+    # ------------------------------------------------------------------ #
+    #  Android                                                             #
+    # ------------------------------------------------------------------ #
+    if(ANDROID)
+        add_dependencies(${TARGET_NAME} libtcc1)
+        add_custom_command(
+            TARGET ${TARGET_NAME} POST_BUILD
+            COMMENT "Staging TCC runtime headers and libs..."
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${_stage}/lib/"
+            COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${tinycc_SOURCE_DIR}/include/" "${_stage}/include/"
+            COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${CMAKE_SYSROOT}/usr/include/" "${_stage}/sysinclude/"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:libtcc1>" "${_stage}/lib/libtcc1.a"
+            VERBATIM
+        )
 
     # ------------------------------------------------------------------ #
     #  Windows (MSVC)                                                      #
     # ------------------------------------------------------------------ #
-    if(MSVC)
+    elseif(MSVC)
         set(_tcc_win32_runtime_objs
             "${tinycc_SOURCE_DIR}/win32/lib/bt-log.o"
             "${tinycc_SOURCE_DIR}/win32/lib/bt-exe.o"
