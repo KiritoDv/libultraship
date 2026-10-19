@@ -482,11 +482,18 @@ if(NOT TARGET libtcc)
         # script so SetupTccRuntime.cmake can use it for .def generation.
         # cl.exe is guaranteed in PATH at build time (VS environment is active).
         if(MSVC AND (NOT EXISTS "${tinycc_SOURCE_DIR}/win32/tcc.exe" OR NOT EXISTS "${tinycc_SOURCE_DIR}/win32/lib/libtcc1.a"))
+            if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
+                get_filename_component(TCC_LLVM_BIN "${CMAKE_C_COMPILER}" DIRECTORY)
+                file(TO_NATIVE_PATH "${TCC_LLVM_BIN}" TCC_LLVM_BIN)
+                set(TCC_BUILD_COMMAND "set PATH=${TCC_LLVM_BIN};%PATH% && build-tcc.bat -c clang")
+            else()
+                set(TCC_BUILD_COMMAND "build-tcc.bat -c cl")
+            endif()
             add_custom_command(
                 OUTPUT
                     "${tinycc_SOURCE_DIR}/win32/tcc.exe"
                     "${tinycc_SOURCE_DIR}/win32/lib/libtcc1.a"
-                COMMAND cmd /c build-tcc.bat -c cl
+                COMMAND cmd /c "${TCC_BUILD_COMMAND}"
                 WORKING_DIRECTORY "${tinycc_SOURCE_DIR}/win32"
                 DEPENDS
                     "${tinycc_SOURCE_DIR}/tcc.c"
