@@ -270,7 +270,36 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(tinycc)
 if(NOT TARGET libtcc)
-    if(NOT EXISTS "${tinycc_SOURCE_DIR}/config.h" AND NOT EXISTS "${tinycc_SOURCE_DIR}/win32/config.h")
+    if(ANDROID)
+        if(CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
+            set(TCC_ANDROID_TARGET ARM64)
+            set(TCC_ANDROID_TRIPLET aarch64-linux-android)
+        elseif(CMAKE_ANDROID_ARCH_ABI STREQUAL "x86_64")
+            set(TCC_ANDROID_TARGET X86_64)
+            set(TCC_ANDROID_TRIPLET x86_64-linux-android)
+        else()
+            message(FATAL_ERROR "TinyCC: no Android support for ${CMAKE_ANDROID_ARCH_ABI}")
+        endif()
+    endif()
+    if(ANDROID AND NOT EXISTS "${tinycc_SOURCE_DIR}/config.h")
+        file(READ "${tinycc_SOURCE_DIR}/VERSION" TCC_VERSION_STRING)
+        string(STRIP "${TCC_VERSION_STRING}" TCC_VERSION_STRING)
+        file(WRITE "${tinycc_SOURCE_DIR}/config.h"
+            "#define TCC_VERSION \"${TCC_VERSION_STRING}\"\n"
+            "#define TARGETOS_ANDROID 1\n"
+            "#define CONFIG_TCC_PREDEFS 1\n"
+            "#define CONFIG_TCC_SYSINCLUDEPATHS \"{B}/include:{B}/sysinclude:{B}/sysinclude/${TCC_ANDROID_TRIPLET}\"\n"
+            "#define CONFIG_TCC_LIBPATHS \"{B}/lib\"\n"
+            "#define CONFIG_TCC_CRTPREFIX \"{B}/lib\"\n"
+            "#define CONFIG_TCC_ELFINTERP \"/system/bin/linker64\"\n"
+            "#define CONFIG_DWARF_VERSION 4\n"
+            "#define CONFIG_NEW_DTAGS 1\n"
+            "#define CONFIG_RUNMEM_RO 1\n"
+            "#ifndef CONFIG_TCCDIR\n"
+            "#define CONFIG_TCCDIR \"/system/lib64/tcc\"\n"
+            "#endif\n"
+        )
+    elseif(NOT EXISTS "${tinycc_SOURCE_DIR}/config.h" AND NOT EXISTS "${tinycc_SOURCE_DIR}/win32/config.h")
         message(STATUS "Configuring TinyCC to generate config.h...")
         if(WIN32)
             execute_process(
@@ -433,6 +462,61 @@ if(NOT TARGET libtcc)
             IMPORTED_LOCATION "${tinycc_SOURCE_DIR}/libtcc1.a"
         )
         add_dependencies(libtcc1 libtcc1_make_build)
+    elseif(ANDROID)
+        set(TCC_ANDROID_HOST "${tinycc_BINARY_DIR}/tcc_android_host")
+        set(TCC_ANDROID_HOST_LIBS "")
+        if(NOT CMAKE_HOST_APPLE)
+            set(TCC_ANDROID_HOST_LIBS -lm -ldl -lpthread)
+        endif()
+        add_custom_command(
+            OUTPUT "${TCC_ANDROID_HOST}"
+            COMMAND ${HOST_C_COMPILER} -O1 -w -DONE_SOURCE=1 -DTCC_TARGET_${TCC_ANDROID_TARGET}
+                    -I "${tinycc_SOURCE_DIR}" -I "${tinycc_BINARY_DIR}"
+                    -o "${TCC_ANDROID_HOST}" "${tinycc_SOURCE_DIR}/tcc.c" ${TCC_ANDROID_HOST_LIBS}
+            DEPENDS "${tinycc_SOURCE_DIR}/tcc.c" "${tinycc_BINARY_DIR}/tccdefs_.h"
+            COMMENT "Building a TinyCC for ${CMAKE_ANDROID_ARCH_ABI} that runs on the build machine..."
+            VERBATIM
+        )
+
+        if(TCC_ANDROID_TARGET STREQUAL "ARM64")
+            set(TCC_ANDROID_RUNTIME lib-arm64.c armflush.c)
+        else()
+            set(TCC_ANDROID_RUNTIME libtcc1.c va_list.c)
+        endif()
+        list(APPEND TCC_ANDROID_RUNTIME stdatomic.c atomic.S builtin.c alloca.S alloca-bt.S dsohandle.c)
+
+        set(TCC_ANDROID_OBJECTS "")
+        foreach(_src ${TCC_ANDROID_RUNTIME})
+            get_filename_component(_name "${_src}" NAME_WE)
+            set(_obj "${tinycc_BINARY_DIR}/android-lib/${_name}.o")
+            add_custom_command(
+                OUTPUT "${_obj}"
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${tinycc_BINARY_DIR}/android-lib"
+                COMMAND "${TCC_ANDROID_HOST}" -B "${tinycc_SOURCE_DIR}" -I "${tinycc_SOURCE_DIR}"
+                        -I "${CMAKE_SYSROOT}/usr/include" -I "${CMAKE_SYSROOT}/usr/include/${TCC_ANDROID_TRIPLET}"
+                        -D__ANDROID_MIN_SDK_VERSION__=${CMAKE_SYSTEM_VERSION} -D__ANDROID_API__=${CMAKE_SYSTEM_VERSION}
+                        -c "${tinycc_SOURCE_DIR}/lib/${_src}" -o "${_obj}"
+                DEPENDS "${TCC_ANDROID_HOST}" "${tinycc_SOURCE_DIR}/lib/${_src}"
+                VERBATIM
+            )
+            list(APPEND TCC_ANDROID_OBJECTS "${_obj}")
+        endforeach()
+
+        add_custom_command(
+            OUTPUT "${tinycc_BINARY_DIR}/android-lib/libtcc1.a"
+            COMMAND ${CMAKE_COMMAND} -E rm -f "${tinycc_BINARY_DIR}/android-lib/libtcc1.a"
+            COMMAND "${TCC_ANDROID_HOST}" -ar rcs "${tinycc_BINARY_DIR}/android-lib/libtcc1.a" ${TCC_ANDROID_OBJECTS}
+            DEPENDS "${TCC_ANDROID_HOST}" ${TCC_ANDROID_OBJECTS}
+            COMMENT "Building libtcc1.a for ${CMAKE_ANDROID_ARCH_ABI}..."
+            VERBATIM
+        )
+        add_custom_target(libtcc1_android_build DEPENDS "${tinycc_BINARY_DIR}/android-lib/libtcc1.a")
+
+        add_library(libtcc1 STATIC IMPORTED GLOBAL)
+        set_target_properties(libtcc1 PROPERTIES
+            IMPORTED_LOCATION "${tinycc_BINARY_DIR}/android-lib/libtcc1.a"
+        )
+        add_dependencies(libtcc1 libtcc1_android_build)
     else()
         add_library(libtcc1 STATIC
             "${tinycc_SOURCE_DIR}/lib/libtcc1.c"
