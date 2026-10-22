@@ -1,4 +1,4 @@
-#if defined(ENABLE_DX11) || defined(ENABLE_DX12)
+#if (defined(ENABLE_DX11) || defined(ENABLE_DX12)) && !defined(__WINRT__)
 
 #include <stdint.h>
 #include <math.h>
@@ -64,8 +64,8 @@ GfxWindowBackendDXGI::GfxWindowBackendDXGI(std::shared_ptr<Ship::Config> config,
                                            std::shared_ptr<Ship::FileDrop> fileDrop,
                                            std::shared_ptr<Ship::ConsoleVariable> consoleVariable,
                                            std::shared_ptr<Fast::Fast3dGui> fast3dGui)
-    : mFileDrop(std::move(fileDrop)), mConsoleVariable(std::move(consoleVariable)), mFast3dGui(std::move(fast3dGui)),
-      mConfig(std::move(config)) {
+    : mFileDrop(std::move(fileDrop)), mConsoleVariable(std::move(consoleVariable)), mConfig(std::move(config)) {
+    mFast3dGui = std::move(fast3dGui);
 }
 
 void GfxWindowBackendDXGI::LoadDxgi() {

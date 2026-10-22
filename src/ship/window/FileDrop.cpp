@@ -8,7 +8,9 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <processthreadsapi.h>
+#ifndef __WINRT__
 #include <dbghelp.h>
+#endif
 #endif
 #include "ship/window/Window.h"
 #ifdef __unix__
@@ -69,7 +71,7 @@ static void PrintRegError(void* funcAddr) {
     if (demangledName != nullptr) {
         free(demangledName);
     }
-#elif _MSC_VER
+#elif defined(_MSC_VER) && !defined(__WINRT__)
     char buffer[sizeof(SYMBOL_INFO) + MAX_SYM_NAME + sizeof(TCHAR)];
 
     PSYMBOL_INFO symbol = (PSYMBOL_INFO)buffer;

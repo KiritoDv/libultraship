@@ -1,6 +1,8 @@
 #pragma once
 
+#ifndef __WINRT__
 #undef _DLL
+#endif
 
 #include "ship/resource/archive/FolderArchive.h"
 

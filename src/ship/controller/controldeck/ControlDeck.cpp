@@ -30,6 +30,10 @@ void ControlDeck::Init(uint8_t* controllerBits) {
     mControllerBits = controllerBits;
     *mControllerBits |= 1 << 0;
 
+    if (mConnectedPhysicalDeviceManager) {
+        mConnectedPhysicalDeviceManager->RefreshConnectedSDLGamepads();
+    }
+
     mWheelHandler = std::make_shared<WheelHandler>(GetWindow());
 
     auto self = std::dynamic_pointer_cast<ControlDeck>(GetSharedComponent());

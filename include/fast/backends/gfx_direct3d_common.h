@@ -90,13 +90,13 @@ struct ShaderProgramD3D11 {
     bool usedTextures[SHADER_MAX_TEXTURES];
 };
 
-class GfxWindowBackendDXGI;
+class GfxDxgiHost;
 
 class GfxRenderingAPIDX11 final : public GfxRenderingAPI {
   public:
     GfxRenderingAPIDX11() = default;
     ~GfxRenderingAPIDX11() override;
-    GfxRenderingAPIDX11(GfxWindowBackendDXGI* backend, std::shared_ptr<Ship::ConsoleVariable> consoleVariable = nullptr,
+    GfxRenderingAPIDX11(GfxDxgiHost* backend, std::shared_ptr<Ship::ConsoleVariable> consoleVariable = nullptr,
                         std::shared_ptr<Ship::ResourceManager> resourceManager = nullptr);
     const char* GetName() override;
     int GetMaxTextureSize() override;
@@ -148,7 +148,7 @@ class GfxRenderingAPIDX11 final : public GfxRenderingAPI {
     PFN_D3D11_CREATE_DEVICE mDX11CreateDevice;
     Microsoft::WRL::ComPtr<ID3D11DeviceContext> mContext;
     Microsoft::WRL::ComPtr<ID3D11Device> mDevice;
-    GfxWindowBackendDXGI* mWindowBackend = nullptr;
+    GfxDxgiHost* mWindowBackend = nullptr;
     D3D_FEATURE_LEVEL mFeatureLevel;
 
     std::shared_ptr<Ship::ConsoleVariable> mConsoleVariable;

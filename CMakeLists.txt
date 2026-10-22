@@ -28,7 +28,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
     set(CMAKE_OBJCXX_FLAGS "${CMAKE_OBJCXX_FLAGS} -fobjc-arc")
 endif()
 
-if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
+if (CMAKE_SYSTEM_NAME STREQUAL "Windows" AND NOT XBOX_UWP)
 	set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 	# Default to embedded debug info (/Z7) so sccache can cache object files
 	# without multiple CL.EXE processes racing over a shared .pdb file.
@@ -71,8 +71,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
     include(cmake/dependencies/openbsd.cmake)
 endif()
 
-if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
+if (CMAKE_SYSTEM_NAME STREQUAL "Windows" AND NOT XBOX_UWP)
     include(cmake/dependencies/windows.cmake)
+endif()
+
+if (XBOX_UWP)
+    include(cmake/dependencies/uwp.cmake)
 endif()
 
 # === Platform Specific Configuration ===

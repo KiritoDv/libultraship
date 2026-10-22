@@ -2,7 +2,9 @@
 
 #pragma once
 
+#ifndef __WINRT__
 #undef _DLL
+#endif
 
 #include <string>
 

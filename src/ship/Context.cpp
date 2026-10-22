@@ -46,6 +46,14 @@
 #include <pwd.h>
 #endif
 
+#ifdef __WINRT__
+#if __has_include(<SDL2/SDL_system.h>)
+#include <SDL2/SDL_system.h>
+#else
+#include <SDL_system.h>
+#endif
+#endif
+
 namespace Ship {
 static void UpdateBridgeCaches(const std::shared_ptr<Context>& context) {
     ResourceSetResourceManager(context->GetChildren().GetFirst<ResourceManager>());
@@ -447,6 +455,15 @@ std::string Context::GetAppBundlePath() {
     }
 #endif
 
+#ifdef __WINRT__
+    {
+        const char* installedLocation = SDL_WinRTGetFSPathUTF8(SDL_WINRT_PATH_INSTALLED_LOCATION);
+        if (installedLocation != NULL) {
+            return installedLocation;
+        }
+    }
+#endif
+
 #ifdef NON_PORTABLE
     return CMAKE_INSTALL_PREFIX;
 #else
@@ -512,6 +529,15 @@ std::string Context::GetAppDirectoryPath(const std::string& appName) {
 #ifdef __IOS__
     const char* home = getenv("HOME");
     return std::string(home) + "/Documents";
+#endif
+
+#ifdef __WINRT__
+    {
+        const char* localFolder = SDL_WinRTGetFSPathUTF8(SDL_WINRT_PATH_LOCAL_FOLDER);
+        if (localFolder != NULL) {
+            return localFolder;
+        }
+    }
 #endif
 
 #if defined(__APPLE__)

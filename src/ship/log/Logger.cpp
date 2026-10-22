@@ -4,6 +4,7 @@
 #include <spdlog/async.h>
 #include <spdlog/sinks/rotating_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+#include <filesystem>
 #include <spdlog/spdlog.h>
 
 #ifdef _WIN32
@@ -69,6 +70,12 @@ void Logger::OnInit(const nlohmann::json& /*initArgs*/) {
         sinks.push_back(systemConsoleSink);
 #endif
 
+        std::error_code logDirError;
+        const auto logDir = std::filesystem::path(mLogFilePath).parent_path();
+        if (!logDir.empty()) {
+            std::filesystem::create_directories(logDir, logDirError);
+        }
+
         auto fileSink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(mLogFilePath, 1024 * 1024 * 10, 10);
         sinks.push_back(fileSink);
 
@@ -78,7 +85,7 @@ void Logger::OnInit(const nlohmann::json& /*initArgs*/) {
         mLogger->flush_on(spdlog::level::trace);
 #else
         mLogger = std::make_shared<spdlog::async_logger>(mAppName, sinks.begin(), sinks.end(), spdlog::thread_pool(),
-                                                         spdlog::async_overflow_policy::block);
+                                                         spdlog::async_overflow_policy::overrun_oldest);
         mLogger->set_level(spdlog::level::warn);
         mLogger->flush_on(spdlog::level::info);
 #endif
@@ -88,7 +95,9 @@ void Logger::OnInit(const nlohmann::json& /*initArgs*/) {
         spdlog::register_logger(mLogger);
         spdlog::set_default_logger(mLogger);
     } catch (const spdlog::spdlog_ex& ex) {
+#ifndef __WINRT__
         std::cout << "Log initialization failed: " << ex.what() << std::endl;
+#endif
         throw;
     }
 }

@@ -17,7 +17,7 @@ Audio::~Audio() {
 
 void Audio::InitAudioPlayer() {
     switch (GetCurrentAudioBackend()) {
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(__WINRT__)
         case AudioBackend::WASAPI:
             mAudioPlayer = std::make_shared<WasapiAudioPlayer>(this->mAudioSettings);
             break;
@@ -44,7 +44,7 @@ void Audio::InitAudioPlayer() {
 
 void Audio::OnInit(const nlohmann::json& /*initArgs*/) {
     mAvailableAudioBackends = std::make_shared<std::vector<AudioBackend>>();
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(__WINRT__)
     mAvailableAudioBackends->push_back(AudioBackend::WASAPI);
 #endif
 #if defined(__APPLE__) && !defined(__IOS__)
@@ -69,7 +69,11 @@ AudioBackend Audio::GetSavedAudioBackend() {
     auto config = GetConfig();
     std::string backendName = config->GetString("Window.AudioBackend");
     if (backendName == "wasapi") {
+#if defined(_WIN32) && !defined(__WINRT__)
         return AudioBackend::WASAPI;
+#else
+        return AudioBackend::SDL;
+#endif
     }
 
     // Migrate pulse player in config to sdl
@@ -97,7 +101,7 @@ AudioBackend Audio::GetSavedAudioBackend() {
 
     SPDLOG_TRACE("Could not find AudioBackend matching value from config file ({}). Returning default AudioBackend.",
                  backendName);
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(__WINRT__)
     return AudioBackend::WASAPI;
 #endif
 

@@ -157,6 +157,8 @@ class Gui : public Component {
      */
     bool GetMenuOrMenubarVisible();
 
+    bool ShouldEnableGamepadNav();
+
     /** @brief Returns true if the mouse cursor is currently over any ImGui item. */
     bool IsMouseOverAnyGuiItem();
 

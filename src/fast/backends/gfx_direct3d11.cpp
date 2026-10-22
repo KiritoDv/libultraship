@@ -23,7 +23,12 @@
 #include "fast/backends/gfx_direct3d_common.h"
 
 #define DECLARE_GFX_DXGI_FUNCTIONS
+#include "fast/backends/gfx_dxgi_host.h"
+#ifdef __WINRT__
+#include "fast/backends/gfx_uwp.h"
+#else
 #include "fast/backends/gfx_dxgi.h"
+#endif
 
 #include "fast/backends/gfx_screen_config.h"
 #include "ship/window/gui/Gui.h"
@@ -50,11 +55,19 @@ namespace Fast {
 // function pointer (prism::IncludeFunc); lambdas with captures cannot be used there.
 static std::shared_ptr<Ship::ResourceManager> sDX11ResourceManager;
 
+static void ReportShaderError(HWND hWnd, const char* message) {
+#ifdef __WINRT__
+    (void)hWnd;
+    SPDLOG_ERROR("Shader compilation failed: {}", message);
+#else
+    MessageBoxA(hWnd, message, "Error", MB_OK | MB_ICONERROR);
+#endif
+}
+
 GfxRenderingAPIDX11::~GfxRenderingAPIDX11() {
 }
 
-GfxRenderingAPIDX11::GfxRenderingAPIDX11(GfxWindowBackendDXGI* backend,
-                                         std::shared_ptr<Ship::ConsoleVariable> consoleVariable,
+GfxRenderingAPIDX11::GfxRenderingAPIDX11(GfxDxgiHost* backend, std::shared_ptr<Ship::ConsoleVariable> consoleVariable,
                                          std::shared_ptr<Ship::ResourceManager> resourceManager)
     : mWindowBackend(backend), mConsoleVariable(std::move(consoleVariable)),
       mResourceManager(std::move(resourceManager)) {
@@ -189,13 +202,28 @@ static bool CreateDeviceFunc(class GfxRenderingAPIDX11* self, bool SoftwareRende
         if (self->mDevice) {
             self->mDevice->Release();
         }
+#ifdef __WINRT__
+        SPDLOG_ERROR("D3D11 device creation failed: {}", error_message);
+#else
         MessageBoxA(self->mWindowBackend->GetWindowHandle(), error_message, "Warning", MB_OK | MB_ICONWARNING);
+#endif
         return false;
     }
     return true;
 };
 
 void GfxRenderingAPIDX11::Init() {
+#ifdef __WINRT__
+    mDX11Module = nullptr;
+    mDX11CreateDevice = &D3D11CreateDevice;
+
+    mCompilerModule = LoadPackagedLibrary(L"d3dcompiler_47.dll", 0);
+    if (mCompilerModule == nullptr) {
+        ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()), mWindowBackend->GetWindowHandle(),
+                      "d3dcompiler_47.dll missing from the app package");
+    }
+    mD3dCompile = (pD3DCompile)GetProcAddress(mCompilerModule, "D3DCompile");
+#else
     // Load d3d11.dll
     mDX11Module = LoadLibraryW(L"d3d11.dll");
     if (mDX11Module == nullptr) {
@@ -210,6 +238,7 @@ void GfxRenderingAPIDX11::Init() {
                       "D3DCompiler_47.dll not found");
     }
     mD3dCompile = (pD3DCompile)GetProcAddress(mCompilerModule, "D3DCompile");
+#endif
 
     // Create D3D11 mDevice
 
@@ -354,7 +383,7 @@ void CSMain(uint3 DTid : SV_DispatchThreadID) {
 
     if (FAILED(hr)) {
         char* err = (char*)error_blob->GetBufferPointer();
-        MessageBoxA(mWindowBackend->GetWindowHandle(), err, "Error", MB_OK | MB_ICONERROR);
+        ReportShaderError(mWindowBackend->GetWindowHandle(), err);
         throw Ship::HResultException(hr, "Compute shader compilation failed");
     }
 
@@ -366,14 +395,19 @@ void CSMain(uint3 DTid : SV_DispatchThreadID) {
 
     if (FAILED(hr)) {
         char* err = (char*)error_blob->GetBufferPointer();
-        MessageBoxA(mWindowBackend->GetWindowHandle(), err, "Error", MB_OK | MB_ICONERROR);
+        ReportShaderError(mWindowBackend->GetWindowHandle(), err);
         throw Ship::HResultException(hr, "MSAA compute shader compilation failed");
     }
 
     // Create ImGui
 
     Fast::GuiWindowInitData window_impl;
+#ifdef __WINRT__
+    window_impl.Dx11 = { static_cast<GfxWindowBackendUWP*>(mWindowBackend)->GetSdlWindow(), mContext.Get(),
+                         mDevice.Get() };
+#else
     window_impl.Dx11 = { mWindowBackend->GetWindowHandle(), mContext.Get(), mDevice.Get() };
+#endif
     if (mWindowBackend->mFast3dGui) {
         mWindowBackend->mFast3dGui->Init(window_impl);
     }
@@ -430,7 +464,7 @@ struct ShaderProgram* GfxRenderingAPIDX11::CreateAndLoadNewShader(uint64_t shade
 
     if (FAILED(hr)) {
         char* err = (char*)error_blob->GetBufferPointer();
-        MessageBoxA(mWindowBackend->GetWindowHandle(), err, "Error", MB_OK | MB_ICONERROR);
+        ReportShaderError(mWindowBackend->GetWindowHandle(), err);
         throw Ship::HResultException(hr, "Vertex shader compilation failed");
     }
 
@@ -439,7 +473,7 @@ struct ShaderProgram* GfxRenderingAPIDX11::CreateAndLoadNewShader(uint64_t shade
 
     if (FAILED(hr)) {
         char* err = (char*)error_blob->GetBufferPointer();
-        MessageBoxA(mWindowBackend->GetWindowHandle(), err, "Error", MB_OK | MB_ICONERROR);
+        ReportShaderError(mWindowBackend->GetWindowHandle(), err);
         throw Ship::HResultException(hr, "Pixel shader compilation failed");
     }
 

@@ -135,7 +135,7 @@ void Gui::OnInit(const nlohmann::json& initArgs) {
         mImGuiIo->ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
     }
 
-    if (mConsoleVariable->GetInteger(CVAR_IMGUI_CONTROLLER_NAV, 0) && GetMenuOrMenubarVisible()) {
+    if (ShouldEnableGamepadNav()) {
         mImGuiIo->ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
     } else {
         mImGuiIo->ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
@@ -193,7 +193,7 @@ void Gui::BlockGamepadNavigation() {
 }
 
 void Gui::UnblockGamepadNavigation() {
-    if (mConsoleVariable->GetInteger(CVAR_IMGUI_CONTROLLER_NAV, 0) && GetMenuOrMenubarVisible()) {
+    if (ShouldEnableGamepadNav()) {
         mImGuiIo->ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
     }
 }
@@ -265,7 +265,7 @@ void Gui::DrawMenu() {
             GetMenuBar()->ToggleVisibility();
         }
         mWindow->GetMouseStateManager()->UpdateMouseCapture();
-        if (mConsoleVariable->GetInteger(CVAR_IMGUI_CONTROLLER_NAV, 0) && GetMenuOrMenubarVisible()) {
+        if (ShouldEnableGamepadNav()) {
             mImGuiIo->ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
         } else {
             mImGuiIo->ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
@@ -426,6 +426,17 @@ std::shared_ptr<GuiMenuBar> Gui::GetMenuBar() {
 
 bool Gui::GetMenuOrMenubarVisible() {
     return (GetMenuBar() && GetMenuBar()->IsVisible()) || (GetMenu() && GetMenu()->IsVisible());
+}
+
+bool Gui::ShouldEnableGamepadNav() {
+    if (!mConsoleVariable->GetInteger(CVAR_IMGUI_CONTROLLER_NAV, 0)) {
+        return false;
+    }
+#ifdef __WINRT__
+    return true;
+#else
+    return GetMenuOrMenubarVisible();
+#endif
 }
 
 bool Gui::IsMouseOverAnyGuiItem() {
