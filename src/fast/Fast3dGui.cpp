@@ -26,6 +26,7 @@
 #else
 #include <SDL2/SDL_hints.h>
 #include <SDL2/SDL_video.h>
+#include <imgui_impl_sdl2.h>
 #endif
 
 #if defined(__ANDROID__) || defined(__IOS__)
@@ -39,10 +40,12 @@
 
 #if defined(ENABLE_DX11) || defined(ENABLE_DX12)
 #include <imgui_impl_dx11.h>
+#ifndef __WINRT__
 #include <imgui_impl_win32.h>
 
 // NOLINTNEXTLINE
 IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+#endif
 #endif
 
 namespace Fast {
@@ -111,6 +114,7 @@ void Fast3dGui::HandleWindowEvents(Fast::WindowEvent event) {
         return;
     }
     switch (window->GetWindowBackend()) {
+        case WindowBackend::FAST3D_UWP_DX11:
         case WindowBackend::FAST3D_SDL_OPENGL:
         case WindowBackend::FAST3D_SDL_METAL:
         case WindowBackend::FAST3D_SDL_VULKAN: {
@@ -148,7 +152,7 @@ void Fast3dGui::HandleWindowEvents(Fast::WindowEvent event) {
 #endif
             break;
         }
-#ifdef ENABLE_DX11
+#if defined(ENABLE_DX11) && !defined(__WINRT__)
         case WindowBackend::FAST3D_DXGI_DX11:
             ImGui_ImplWin32_WndProcHandler(static_cast<HWND>(event.Win32.Handle), event.Win32.Msg, event.Win32.Param1,
                                            event.Win32.Param2);
@@ -190,9 +194,17 @@ void Fast3dGui::ImGuiWMInit() {
             ImGui_ImplSDL2_InitForVulkan(static_cast<SDL_Window*>(mImpl.Vulkan.Window));
             break;
 #endif
-#if defined(ENABLE_DX11) || defined(ENABLE_DX12)
+#if (defined(ENABLE_DX11) || defined(ENABLE_DX12)) && !defined(__WINRT__)
         case WindowBackend::FAST3D_DXGI_DX11:
             ImGui_ImplWin32_Init(mImpl.Dx11.Window);
+            break;
+#endif
+#if defined(ENABLE_DX11) && defined(__WINRT__)
+        case WindowBackend::FAST3D_UWP_DX11:
+            if (mConsoleVariables->GetInteger(CVAR_ALLOW_BACKGROUND_INPUTS, 1)) {
+                SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+            }
+            ImGui_ImplSDL2_InitForD3D(static_cast<SDL_Window*>(mImpl.Dx11.Window));
             break;
 #endif
         default:
@@ -218,9 +230,14 @@ void Fast3dGui::ImGuiWMShutdown() {
             ImGui_ImplSDL2_Shutdown();
             break;
 #endif
-#if defined(ENABLE_DX11) || defined(ENABLE_DX12)
+#if (defined(ENABLE_DX11) || defined(ENABLE_DX12)) && !defined(__WINRT__)
         case WindowBackend::FAST3D_DXGI_DX11:
             ImGui_ImplWin32_Shutdown();
+            break;
+#endif
+#if defined(ENABLE_DX11) && defined(__WINRT__)
+        case WindowBackend::FAST3D_UWP_DX11:
+            ImGui_ImplSDL2_Shutdown();
             break;
 #endif
         default:
@@ -260,6 +277,7 @@ void Fast3dGui::ImGuiBackendInit() {
 #endif
 
 #ifdef ENABLE_DX11
+        case WindowBackend::FAST3D_UWP_DX11:
         case WindowBackend::FAST3D_DXGI_DX11:
             ImGui_ImplDX11_Init(static_cast<ID3D11Device*>(mImpl.Dx11.Device),
                                 static_cast<ID3D11DeviceContext*>(mImpl.Dx11.DeviceContext));
@@ -291,6 +309,7 @@ void Fast3dGui::ImGuiBackendShutdown() {
         }
 #endif
 #if defined(ENABLE_DX11) || defined(ENABLE_DX12)
+        case WindowBackend::FAST3D_UWP_DX11:
         case WindowBackend::FAST3D_DXGI_DX11:
             ImGui_ImplDX11_Shutdown();
             break;
@@ -310,6 +329,7 @@ void Fast3dGui::ImGuiBackendNewFrame() {
 #endif
 
 #ifdef ENABLE_DX11
+        case WindowBackend::FAST3D_UWP_DX11:
         case WindowBackend::FAST3D_DXGI_DX11:
             ImGui_ImplDX11_NewFrame();
             break;
@@ -337,6 +357,7 @@ void Fast3dGui::ImGuiBackendNewFrame() {
 void Fast3dGui::ImGuiWMNewFrame() {
     auto window = mWindow;
     switch (window->GetWindowBackend()) {
+        case WindowBackend::FAST3D_UWP_DX11:
         case WindowBackend::FAST3D_SDL_OPENGL:
         case WindowBackend::FAST3D_SDL_METAL:
         case WindowBackend::FAST3D_SDL_VULKAN:
@@ -355,7 +376,7 @@ void Fast3dGui::ImGuiWMNewFrame() {
             }
 #endif
             break;
-#ifdef ENABLE_DX11
+#if defined(ENABLE_DX11) && !defined(__WINRT__)
         case WindowBackend::FAST3D_DXGI_DX11:
             ImGui_ImplWin32_NewFrame();
             break;
@@ -391,6 +412,7 @@ void Fast3dGui::ImGuiRenderDrawData(ImDrawData* data) {
 #endif
 
 #ifdef ENABLE_DX11
+        case WindowBackend::FAST3D_UWP_DX11:
         case WindowBackend::FAST3D_DXGI_DX11:
             ImGui_ImplDX11_RenderDrawData(data);
             break;

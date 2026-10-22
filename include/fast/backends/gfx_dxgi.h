@@ -1,8 +1,9 @@
 #pragma once
-#if defined(ENABLE_DX11) || defined(ENABLE_DX12)
+#if (defined(ENABLE_DX11) || defined(ENABLE_DX12)) && !defined(__WINRT__)
 
 #include <memory>
 #include "gfx_rendering_api.h"
+#include "gfx_dxgi_host.h"
 #include "ship/utils/HResultException.h"
 
 #include <functional>
@@ -18,7 +19,7 @@ class ConsoleVariable;
 namespace Fast {
 class Fast3dGui;
 
-class GfxWindowBackendDXGI final : public GfxWindowBackend {
+class GfxWindowBackendDXGI final : public GfxDxgiHost {
   public:
     GfxWindowBackendDXGI(std::shared_ptr<Ship::Config> config = nullptr,
                          std::shared_ptr<Ship::FileDrop> fileDrop = nullptr,
@@ -60,12 +61,12 @@ class GfxWindowBackendDXGI final : public GfxWindowBackend {
     void Destroy() override;
     bool IsFullscreen() override;
 
-    HWND GetWindowHandle();
-    IDXGISwapChain1* GetSwapChain();
+    HWND GetWindowHandle() override;
+    IDXGISwapChain1* GetSwapChain() override;
     // These need to be public to be accessible in the window callback
-    void CreateSwapChain(IUnknown* mDevice, std::function<void()>&& before_destroy_fn);
+    void CreateSwapChain(IUnknown* mDevice, std::function<void()>&& before_destroy_fn) override;
     void CreateFactoryAndDevice(bool debug, int d3d_version, class GfxRenderingAPIDX11* self,
-                                bool (*createFunc)(class GfxRenderingAPIDX11* self, bool SoftwareRenderer));
+                                bool (*createFunc)(class GfxRenderingAPIDX11* self, bool SoftwareRenderer)) override;
     void OnKeydown(WPARAM wParam, LPARAM lParam);
     void OnKeyup(WPARAM wParam, LPARAM lParam);
     void OnMouseButtonDown(int btn);
@@ -91,7 +92,6 @@ class GfxWindowBackendDXGI final : public GfxWindowBackend {
     // These need to be public to be accessible in the window callback
     std::shared_ptr<Ship::FileDrop> mFileDrop;
     std::shared_ptr<Ship::ConsoleVariable> mConsoleVariable;
-    std::shared_ptr<Fast::Fast3dGui> mFast3dGui;
 
   private:
     void LoadDxgi();

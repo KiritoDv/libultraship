@@ -11,7 +11,7 @@ set(INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../include)
 option(USE_OPENGLES "Enable GLES3" OFF)
 option(GFX_DEBUG_DISASSEMBLER "Enable libgfxd" OFF)
 
-if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
+if (CMAKE_SYSTEM_NAME STREQUAL "Windows" AND NOT XBOX_UWP)
 use_props(${PROJECT_NAME} "${CMAKE_CONFIGURATION_TYPES}" "${DEFAULT_CXX_PROPS}")
 endif()
 
@@ -121,6 +121,10 @@ target_link_libraries(libultraship
     PUBLIC ImGui
 )
 
+if (XBOX_UWP)
+    target_link_libraries(libultraship PUBLIC d3d11 dxgi d3dcompiler)
+endif()
+
 target_link_libraries(libultraship PRIVATE stb)
 
 if (GFX_DEBUG_DISASSEMBLER)
@@ -219,14 +223,16 @@ endif()
 
 target_compile_definitions(libultraship PRIVATE ${GBI_UCODE})
 
-if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
+if (WIN32)
     target_compile_definitions(${PROJECT_NAME} PRIVATE
         WIN32
-        _CONSOLE
         _CRT_SECURE_NO_WARNINGS
         ENABLE_DX11
         NOMINMAX
     )
+    if (NOT XBOX_UWP)
+        target_compile_definitions(${PROJECT_NAME} PRIVATE _CONSOLE)
+    endif()
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
@@ -279,7 +285,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
     endif()
 else()
     target_compile_definitions(libultraship PRIVATE
-        ENABLE_OPENGL
+        $<$<NOT:$<BOOL:${XBOX_UWP}>>:ENABLE_OPENGL>
         $<$<CONFIG:Debug>:_DEBUG>
         $<$<NOT:$<CONFIG:Debug>>:NDEBUG>
         SPDLOG_ACTIVE_LEVEL=${SPDLOG_MIN_CUTOFF}

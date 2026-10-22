@@ -12,6 +12,7 @@
 #include "fast/interpreter.h"
 #include "fast/backends/gfx_sdl.h"
 #include "fast/backends/gfx_dxgi.h"
+#include "fast/backends/gfx_uwp.h"
 #include "fast/backends/gfx_opengl.h"
 #include "fast/backends/gfx_metal.h"
 #include "fast/backends/gfx_vulkan.h"
@@ -39,8 +40,11 @@ Fast3dWindow::Fast3dWindow(std::shared_ptr<Ship::Gui> gui, std::shared_ptr<FastM
     mInterpreter = std::make_shared<Interpreter>();
     GfxSetInstance(mInterpreter);
 
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(__WINRT__)
     AddAvailableWindowBackend(WindowBackend::FAST3D_DXGI_DX11);
+#endif
+#ifdef __WINRT__
+    AddAvailableWindowBackend(WindowBackend::FAST3D_UWP_DX11);
 #endif
 #ifdef __APPLE__
     if (Metal_IsSupported()) {
@@ -173,13 +177,23 @@ void Fast3dWindow::InitWindowManager() {
     SetWindowBackend(GetSavedWindowBackend());
 
     switch (GetWindowBackend()) {
-#ifdef ENABLE_DX11
+#if defined(ENABLE_DX11) && !defined(__WINRT__)
         case WindowBackend::FAST3D_DXGI_DX11:
             mWindowManagerApi =
                 new GfxWindowBackendDXGI(GetConfig(), GetContext()->GetChildren().GetFirst<Ship::FileDrop>(),
                                          GetConsoleVariables(), std::dynamic_pointer_cast<Fast::Fast3dGui>(GetGui()));
             mRenderingApi =
                 new GfxRenderingAPIDX11(static_cast<GfxWindowBackendDXGI*>(mWindowManagerApi), GetConsoleVariables(),
+                                        GetContext()->GetChildren().GetFirst<Ship::ResourceManager>());
+            break;
+#endif
+#if defined(ENABLE_DX11) && defined(__WINRT__)
+        case WindowBackend::FAST3D_UWP_DX11:
+            mWindowManagerApi =
+                new GfxWindowBackendUWP(GetConfig(), GetContext()->GetChildren().GetFirst<Ship::FileDrop>(),
+                                        GetConsoleVariables(), std::dynamic_pointer_cast<Fast::Fast3dGui>(GetGui()));
+            mRenderingApi =
+                new GfxRenderingAPIDX11(static_cast<GfxWindowBackendUWP*>(mWindowManagerApi), GetConsoleVariables(),
                                         GetContext()->GetChildren().GetFirst<Ship::ResourceManager>());
             break;
 #endif
@@ -478,8 +492,12 @@ std::shared_ptr<GfxDebugger> Fast3dWindow::GetGfxDebugger() const {
 
 std::string Fast3dWindow::GetWindowBackendName() {
     switch (GetWindowBackend()) {
-#ifdef ENABLE_DX11
+#if defined(ENABLE_DX11) && !defined(__WINRT__)
         case WindowBackend::FAST3D_DXGI_DX11:
+            return "DirectX 11";
+#endif
+#if defined(ENABLE_DX11) && defined(__WINRT__)
+        case WindowBackend::FAST3D_UWP_DX11:
             return "DirectX 11";
 #endif
 #ifdef ENABLE_OPENGL

@@ -104,5 +104,7 @@ void ConnectedPhysicalDeviceManager::RefreshConnectedSDLGamepads() {
             mIgnoredInstanceIds[port].insert(instanceId);
         }
     }
+
+    SPDLOG_INFO("Connected SDL gamepads: {}", mConnectedSDLGamepads.size());
 }
 } // namespace Ship

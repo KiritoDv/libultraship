@@ -6,12 +6,14 @@
 
 #ifdef _WIN32
 #include <windows.h>
-#include <DbgHelp.h>
 #include <errhandlingapi.h>
 #include <inttypes.h>
 #include <excpt.h>
 
+#ifndef __WINRT__
+#include <DbgHelp.h>
 #pragma comment(lib, "Dbghelp.lib")
+#endif
 #endif
 
 namespace Ship {
@@ -311,8 +313,7 @@ void CrashHandler::PrintRegisters(CONTEXT* ctx) {
 }
 
 void CrashHandler::PrintStack(CONTEXT* ctx) {
-// Some crash hander features are not supported on ARM64
-#ifndef _M_ARM64
+#if !defined(_M_ARM64) && !defined(__WINRT__)
     BOOL result;
     HANDLE process;
     HANDLE thread;

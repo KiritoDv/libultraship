@@ -1,4 +1,4 @@
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(__WINRT__)
 #include "ship/audio/WasapiAudioPlayer.h"
 #include "ship/utils/HResultException.h"
 #include <spdlog/spdlog.h>
