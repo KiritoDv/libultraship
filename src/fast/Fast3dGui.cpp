@@ -361,6 +361,14 @@ void Fast3dGui::ImGuiWMNewFrame() {
         case WindowBackend::FAST3D_SDL_OPENGL:
         case WindowBackend::FAST3D_SDL_METAL:
         case WindowBackend::FAST3D_SDL_VULKAN:
+            if ((ImGui::GetIO().BackendFlags & ImGuiBackendFlags_HasGamepad) == 0) {
+                for (int i = 0; i < SDL_NumJoysticks(); i++) {
+                    if (SDL_IsGameController(i)) {
+                        ImGui_ImplSDL2_SetGamepadMode(ImGui_ImplSDL2_GamepadMode_AutoFirst);
+                        break;
+                    }
+                }
+            }
             ImGui_ImplSDL2_NewFrame();
 #ifdef __IOS__
             // Run ImGui in drawable-pixel space (the rest of the engine works in

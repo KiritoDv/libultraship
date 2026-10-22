@@ -75,6 +75,10 @@ function(lus_setup_tcc_runtime TARGET_NAME)
             "${tinycc_SOURCE_DIR}/win32/lib/runmain.o"
         )
 
+        # Import definitions for the system DLLs TCC links by default on a PE
+        # target. Without them compilation stops at "library 'kernel32' not found".
+        file(GLOB _tcc_win32_defs "${tinycc_SOURCE_DIR}/win32/lib/*.def")
+
         # Bundle all generated .lib files so mods can link against the host.
         add_custom_command(
             TARGET ${TARGET_NAME} POST_BUILD
@@ -94,6 +98,7 @@ function(lus_setup_tcc_runtime TARGET_NAME)
             # mandatory: with "-g" and TCC_OUTPUT_MEMORY, tcc_relocate() enables
             # backtrace support and fails if it cannot find it.
             COMMAND ${CMAKE_COMMAND} -E copy ${_tcc_win32_runtime_objs} "${_stage}/lib/"
+            COMMAND ${CMAKE_COMMAND} -E copy ${_tcc_win32_defs} "${_stage}/lib/"
             COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:libtcc>" "$<TARGET_FILE_DIR:${TARGET_NAME}>/$<TARGET_FILE_NAME:libtcc>"
             VERBATIM
         )

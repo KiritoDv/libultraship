@@ -304,7 +304,7 @@ if(NOT TARGET libtcc)
         message(STATUS "Configuring TinyCC to generate config.h...")
         if(WIN32)
             execute_process(
-                COMMAND cmd /c build-tcc.bat -c cl
+                COMMAND cmd /c .\\build-tcc.bat -c cl
                 WORKING_DIRECTORY "${tinycc_SOURCE_DIR}/win32"
                 RESULT_VARIABLE tcc_config_result
             )
@@ -570,9 +570,9 @@ if(NOT TARGET libtcc)
             if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
                 get_filename_component(TCC_LLVM_BIN "${CMAKE_C_COMPILER}" DIRECTORY)
                 file(TO_NATIVE_PATH "${TCC_LLVM_BIN}" TCC_LLVM_BIN)
-                set(TCC_BUILD_COMMAND "set PATH=${TCC_LLVM_BIN};%PATH% && build-tcc.bat -c clang")
+                set(TCC_BUILD_COMMAND "set PATH=${TCC_LLVM_BIN};%PATH% && .\\build-tcc.bat -c clang")
             else()
-                set(TCC_BUILD_COMMAND "build-tcc.bat -c cl")
+                set(TCC_BUILD_COMMAND ".\\build-tcc.bat -c cl")
             endif()
             add_custom_command(
                 OUTPUT
