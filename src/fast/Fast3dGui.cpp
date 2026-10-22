@@ -19,11 +19,13 @@
 #include "ship/resource/File.h"
 
 #ifdef __APPLE__
+#include <SDL_gamecontroller.h>
 #include <SDL_hints.h>
 #include <SDL_video.h>
 #include <imgui_impl_metal.h>
 #include <imgui_impl_sdl2.h>
 #else
+#include <SDL2/SDL_gamecontroller.h>
 #include <SDL2/SDL_hints.h>
 #include <SDL2/SDL_video.h>
 #include <imgui_impl_sdl2.h>
