@@ -76,18 +76,18 @@ class GfxWindowBackendDXGI final : public GfxDxgiHost {
     void ApplyMouseCaptureClip();
 
     std::tuple<HMONITOR, RECT, BOOL> mMonitor; // 0: Handle, 1: Display Monitor Rect, 2: Is_Primary
-    uint32_t current_width, current_height;    // Width and height of client areas
+    uint32_t current_width = 0, current_height = 0; // Width and height of client areas
     std::vector<std::tuple<HMONITOR, RECT, BOOL>> monitor_list;
-    int32_t mPosX, mPosY; // Screen coordinates
-    double mDetectedHz;
-    double mDisplayPeriod; // (1000 / dxgi.mDetectedHz) in ms
-    void (*mOnAllKeysUp)(void);
-    POINT mRawMouseDeltaBuf;
-    float mMouseWheel[2];
-    bool mIsMouseCaptured;
-    bool mIsMouseHovered;
-    bool mInFocus;
-    bool mHasMousePosition;
+    int32_t mPosX = 0, mPosY = 0; // Screen coordinates
+    double mDetectedHz = 0.0;
+    double mDisplayPeriod = 0.0; // (1000 / dxgi.mDetectedHz) in ms
+    void (*mOnAllKeysUp)(void) = nullptr;
+    POINT mRawMouseDeltaBuf = {};
+    float mMouseWheel[2] = { 0.0f, 0.0f };
+    bool mIsMouseCaptured = false;
+    bool mIsMouseHovered = false;
+    bool mInFocus = false;
+    bool mHasMousePosition = false;
 
     // These need to be public to be accessible in the window callback
     std::shared_ptr<Ship::FileDrop> mFileDrop;
