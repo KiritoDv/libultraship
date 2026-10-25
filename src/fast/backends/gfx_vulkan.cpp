@@ -1933,10 +1933,15 @@ void GfxRenderingAPIVK::UpdateFramebufferParameters(int fbId, uint32_t width, ui
 
     width = std::max(width, 1u);
     height = std::max(height, 1u);
-    msaaLevel = std::max(msaaLevel, 1u);
-    while (msaaLevel > 1 && (mDeviceProps.limits.framebufferColorSampleCounts & msaaLevel) == 0) {
-        msaaLevel--;
+    VkSampleCountFlags supportedSamples = mDeviceProps.limits.framebufferColorSampleCounts;
+    if (has_depth_buffer) {
+        supportedSamples &= mDeviceProps.limits.framebufferDepthSampleCounts;
     }
+    uint32_t samples = 1;
+    while (samples * 2 <= msaaLevel && (supportedSamples & (samples * 2)) != 0) {
+        samples *= 2;
+    }
+    msaaLevel = samples;
 
     bool diff = fb.mWidth != width || fb.mHeight != height || fb.mMsaaLevel != msaaLevel ||
                 fb.mHasDepthBuffer != has_depth_buffer || fb.mRenderTarget != render_target;

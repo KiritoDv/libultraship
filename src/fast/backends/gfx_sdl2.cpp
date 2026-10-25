@@ -713,8 +713,12 @@ void GfxWindowBackendSDL2::SwapBuffersBegin() {
 
     if (mVsyncEnabled != nextVsyncEnabled) {
         mVsyncEnabled = nextVsyncEnabled;
-        SDL_GL_SetSwapInterval(mVsyncEnabled ? 1 : 0);
-        SDL_RenderSetVSync(mRenderer, mVsyncEnabled ? 1 : 0);
+        if (mCtx != nullptr) {
+            SDL_GL_SetSwapInterval(mVsyncEnabled ? 1 : 0);
+        }
+        if (mRenderer != nullptr) {
+            SDL_RenderSetVSync(mRenderer, mVsyncEnabled ? 1 : 0);
+        }
     }
 
     SyncFramerateWithTime();
@@ -754,9 +758,13 @@ bool GfxWindowBackendSDL2::IsRunning() {
 
 void GfxWindowBackendSDL2::Destroy() {
     // TODO: destroy _any_ resources used by SDL
-    SDL_GL_DeleteContext(mCtx);
+    if (mRenderer != nullptr) {
+        SDL_DestroyRenderer(mRenderer);
+    }
+    if (mCtx != nullptr) {
+        SDL_GL_DeleteContext(mCtx);
+    }
     SDL_DestroyWindow(mWnd);
-    SDL_DestroyRenderer(mRenderer);
     SDL_Quit();
 }
 
