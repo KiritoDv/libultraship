@@ -358,5 +358,7 @@ class GfxRenderingAPIVK final : public GfxRenderingAPI {
 } // namespace Fast
 
 bool Vulkan_IsSupported();
+// False when the only Vulkan devices are CPU (software) implementations such as llvmpipe.
+bool Vulkan_HasHardwareDevice();
 
 #endif

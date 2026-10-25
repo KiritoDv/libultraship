@@ -818,6 +818,13 @@ bool GfxRenderingAPIVK::VulkanInit(SDL_Window* window) {
     std::vector<VkPhysicalDevice> devices(devCount);
     vkEnumeratePhysicalDevices(mInstance, &devCount, devices.data());
 
+    // Try hardware devices before software ones (llvmpipe) so a real GPU wins when both are present.
+    std::stable_partition(devices.begin(), devices.end(), [](VkPhysicalDevice dev) {
+        VkPhysicalDeviceProperties props;
+        vkGetPhysicalDeviceProperties(dev, &props);
+        return props.deviceType != VK_PHYSICAL_DEVICE_TYPE_CPU;
+    });
+
     for (VkPhysicalDevice dev : devices) {
         uint32_t qCount = 0;
         vkGetPhysicalDeviceQueueFamilyProperties(dev, &qCount, nullptr);
@@ -2419,6 +2426,53 @@ bool Vulkan_IsSupported() {
         return false;
     }
     return true;
+}
+
+bool Vulkan_HasHardwareDevice() {
+    VkApplicationInfo app = { VK_STRUCTURE_TYPE_APPLICATION_INFO };
+    app.pApplicationName = "libultraship";
+    app.apiVersion = VK_API_VERSION_1_1;
+
+    VkInstanceCreateInfo ici = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
+    ici.pApplicationInfo = &app;
+
+    // MoltenVK only enumerates with portability enumeration enabled, same as VulkanInit.
+    uint32_t availExtCount = 0;
+    vkEnumerateInstanceExtensionProperties(nullptr, &availExtCount, nullptr);
+    std::vector<VkExtensionProperties> availExts(availExtCount);
+    vkEnumerateInstanceExtensionProperties(nullptr, &availExtCount, availExts.data());
+    const char* portabilityExt = "VK_KHR_portability_enumeration";
+    for (const auto& e : availExts) {
+        if (strcmp(e.extensionName, portabilityExt) == 0) {
+            ici.enabledExtensionCount = 1;
+            ici.ppEnabledExtensionNames = &portabilityExt;
+            ici.flags |= 0x00000001; // VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR
+        }
+    }
+
+    VkInstance instance = VK_NULL_HANDLE;
+    if (vkCreateInstance(&ici, nullptr, &instance) != VK_SUCCESS) {
+        return false;
+    }
+
+    uint32_t devCount = 0;
+    vkEnumeratePhysicalDevices(instance, &devCount, nullptr);
+    std::vector<VkPhysicalDevice> devices(devCount);
+    vkEnumeratePhysicalDevices(instance, &devCount, devices.data());
+
+    bool hasHardware = false;
+    for (VkPhysicalDevice dev : devices) {
+        VkPhysicalDeviceProperties props;
+        vkGetPhysicalDeviceProperties(dev, &props);
+        if (props.deviceType != VK_PHYSICAL_DEVICE_TYPE_CPU) {
+            hasHardware = true;
+            break;
+        }
+        SPDLOG_INFO("Vulkan: skipping software device {}", props.deviceName);
+    }
+
+    vkDestroyInstance(instance, nullptr);
+    return hasHardware;
 }
 
 #endif

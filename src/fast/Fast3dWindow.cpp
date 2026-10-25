@@ -52,12 +52,20 @@ Fast3dWindow::Fast3dWindow(std::shared_ptr<Ship::Gui> gui, std::shared_ptr<FastM
     }
 #endif
 #ifdef ENABLE_VULKAN
-    if (Vulkan_IsSupported()) {
+    // With only a software device (llvmpipe) Vulkan stays selectable but goes after OpenGL so it isn't the default.
+    const bool vulkanSupported = Vulkan_IsSupported();
+    const bool vulkanHardware = vulkanSupported && Vulkan_HasHardwareDevice();
+    if (vulkanHardware) {
         AddAvailableWindowBackend(WindowBackend::FAST3D_SDL_VULKAN);
     }
 #endif
 #ifdef ENABLE_OPENGL
     AddAvailableWindowBackend(WindowBackend::FAST3D_SDL_OPENGL);
+#endif
+#ifdef ENABLE_VULKAN
+    if (vulkanSupported && !vulkanHardware) {
+        AddAvailableWindowBackend(WindowBackend::FAST3D_SDL_VULKAN);
+    }
 #endif
 }
 
