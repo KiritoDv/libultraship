@@ -256,12 +256,17 @@ void Gui::DrawMenu() {
 
     ImGui::DockSpace(dockId, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None | ImGuiDockNodeFlags_NoDockingInCentralNode);
 
-    if (ImGui::IsKeyPressed(TOGGLE_BTN, false) || ImGui::IsKeyPressed(ImGuiKey_Escape, false) ||
-        (ImGui::IsKeyPressed(TOGGLE_PAD_BTN, false) && mConsoleVariable->GetInteger(CVAR_IMGUI_CONTROLLER_NAV, 0))) {
-        if ((ImGui::IsKeyPressed(ImGuiKey_Escape, false) || ImGui::IsKeyPressed(TOGGLE_PAD_BTN, false)) && GetMenu()) {
+    const auto menuKey =
+        static_cast<ImGuiKey>(mConsoleVariable->GetInteger(CVAR_MENU_TOGGLE_KEY, static_cast<int32_t>(ImGuiKey_Escape)));
+    const bool menuKeyPressed = menuKey != ImGuiKey_None && ImGui::IsKeyPressed(menuKey, false);
+    const bool padPressed = ImGui::IsKeyPressed(TOGGLE_PAD_BTN, false) &&
+                            (mConsoleVariable->GetInteger(CVAR_IMGUI_CONTROLLER_NAV, 0) ||
+                             mConsoleVariable->GetInteger(CVAR_MENU_PAD_TOGGLE, 1));
+
+    if (ImGui::IsKeyPressed(TOGGLE_BTN, false) || menuKeyPressed || padPressed) {
+        if ((menuKeyPressed || padPressed) && GetMenu()) {
             GetMenu()->ToggleVisibility();
-        } else if ((ImGui::IsKeyPressed(TOGGLE_BTN, false) || ImGui::IsKeyPressed(TOGGLE_PAD_BTN, false)) &&
-                   GetMenuBar()) {
+        } else if ((ImGui::IsKeyPressed(TOGGLE_BTN, false) || padPressed) && GetMenuBar()) {
             GetMenuBar()->ToggleVisibility();
         }
         mWindow->GetMouseStateManager()->UpdateMouseCapture();
