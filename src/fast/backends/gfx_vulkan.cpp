@@ -1116,12 +1116,12 @@ void GfxRenderingAPIVK::NewFrame() {
 
     VkResult acquire = vkAcquireNextImageKHR(mDevice, mSwapchain, UINT64_MAX, slot.imageAvailable, VK_NULL_HANDLE,
                                              &mSwapchainImageIndex);
-    if (acquire == VK_ERROR_OUT_OF_DATE_KHR || acquire == VK_SUBOPTIMAL_KHR) {
+    if (acquire == VK_ERROR_OUT_OF_DATE_KHR) {
         CreateSwapchain((uint32_t)dw, (uint32_t)dh);
         acquire = vkAcquireNextImageKHR(mDevice, mSwapchain, UINT64_MAX, slot.imageAvailable, VK_NULL_HANDLE,
                                         &mSwapchainImageIndex);
     }
-    if (acquire != VK_SUCCESS) {
+    if (acquire != VK_SUCCESS && acquire != VK_SUBOPTIMAL_KHR) {
         SPDLOG_ERROR("Vulkan: vkAcquireNextImageKHR failed ({})", (int)acquire);
     }
 
@@ -2355,9 +2355,9 @@ void GfxRenderingAPIVK::EndFrame() {
     pi.pSwapchains = &mSwapchain;
     pi.pImageIndices = &mSwapchainImageIndex;
     VkResult present = vkQueuePresentKHR(mQueue, &pi);
-    if (present == VK_ERROR_OUT_OF_DATE_KHR || present == VK_SUBOPTIMAL_KHR) {
+    if (present == VK_ERROR_OUT_OF_DATE_KHR) {
         mSwapchainNeedsRecreate = true;
-    } else if (present != VK_SUCCESS) {
+    } else if (present != VK_SUCCESS && present != VK_SUBOPTIMAL_KHR) {
         SPDLOG_ERROR("Vulkan: vkQueuePresentKHR failed ({})", (int)present);
     }
 
