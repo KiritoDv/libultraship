@@ -215,6 +215,8 @@ class GfxRenderingAPIVK final : public GfxRenderingAPI {
         VkFence fence = VK_NULL_HANDLE;
         bool fenceInFlight = false;
         VkCommandPool commandPool = VK_NULL_HANDLE;
+        std::vector<VkCommandBuffer> commandBuffers;
+        size_t commandBuffersUsed = 0;
         VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
         VkSemaphore imageAvailable = VK_NULL_HANDLE;
         VkSemaphore renderFinished = VK_NULL_HANDLE;
@@ -253,6 +255,7 @@ class GfxRenderingAPIVK final : public GfxRenderingAPI {
     VkRenderPass GetRenderPass(uint32_t msaaLevel, bool hasDepth);
     VkSampler GetSampler(bool linear, uint32_t cms, uint32_t cmt, bool autoMipmap = false);
     void EnsureUploadCmd();
+    VkCommandBuffer BeginFrameCommandBuffer();
     void FlushUploads();
     // Grow a frame slot's staging buffer to fit an oversized upload (e.g. a 4K HD
     // replacement = 64 MB > the 32 MB default). Caller must ensure the queue is idle.

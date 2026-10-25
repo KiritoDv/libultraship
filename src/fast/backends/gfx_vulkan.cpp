@@ -566,18 +566,29 @@ VkSampler GfxRenderingAPIVK::GetSampler(bool linear, uint32_t cms, uint32_t cmt,
     return sampler;
 }
 
+VkCommandBuffer GfxRenderingAPIVK::BeginFrameCommandBuffer() {
+    FrameSlot& slot = mFrames[mFrameSlot];
+    if (slot.commandBuffersUsed == slot.commandBuffers.size()) {
+        VkCommandBufferAllocateInfo ai = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
+        ai.commandPool = slot.commandPool;
+        ai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        ai.commandBufferCount = 1;
+        VkCommandBuffer cmd = VK_NULL_HANDLE;
+        VK_CHECK(vkAllocateCommandBuffers(mDevice, &ai, &cmd));
+        slot.commandBuffers.push_back(cmd);
+    }
+    VkCommandBuffer cmd = slot.commandBuffers[slot.commandBuffersUsed++];
+    VkCommandBufferBeginInfo bi = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    VK_CHECK(vkBeginCommandBuffer(cmd, &bi));
+    return cmd;
+}
+
 void GfxRenderingAPIVK::EnsureUploadCmd() {
     if (mUploadCmd != VK_NULL_HANDLE) {
         return;
     }
-    VkCommandBufferAllocateInfo ai = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
-    ai.commandPool = mFrames[mFrameSlot].commandPool;
-    ai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    ai.commandBufferCount = 1;
-    VK_CHECK(vkAllocateCommandBuffers(mDevice, &ai, &mUploadCmd));
-    VkCommandBufferBeginInfo bi = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
-    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    VK_CHECK(vkBeginCommandBuffer(mUploadCmd, &bi));
+    mUploadCmd = BeginFrameCommandBuffer();
 }
 
 // Submit whatever uploads have been recorded so far and wait. Used when a
@@ -1052,6 +1063,7 @@ void GfxRenderingAPIVK::NewFrame() {
     }
     CollectGarbage(slot);
     VK_CHECK(vkResetCommandPool(mDevice, slot.commandPool, 0));
+    slot.commandBuffersUsed = 0;
     VK_CHECK(vkResetDescriptorPool(mDevice, slot.descriptorPool, 0));
 
     // Re-create the static set 0 (pool reset destroyed it)
@@ -1743,14 +1755,7 @@ void GfxRenderingAPIVK::EnsurePassActive(int fbId) {
     }
 
     if (fb.mCommandBuffer == VK_NULL_HANDLE) {
-        VkCommandBufferAllocateInfo ai = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
-        ai.commandPool = mFrames[mFrameSlot].commandPool;
-        ai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        ai.commandBufferCount = 1;
-        VK_CHECK(vkAllocateCommandBuffers(mDevice, &ai, &fb.mCommandBuffer));
-        VkCommandBufferBeginInfo bi = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
-        bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        VK_CHECK(vkBeginCommandBuffer(fb.mCommandBuffer, &bi));
+        fb.mCommandBuffer = BeginFrameCommandBuffer();
 
         if (fbId == 0 && !mSwapchainImageUsed[mSwapchainImageIndex]) {
             // First use of this swapchain image: bring it into GENERAL
