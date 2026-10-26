@@ -102,6 +102,12 @@ class ConsoleWindow : public GuiWindow {
      */
     std::string GetCurrentChannel();
 
+    /** @brief Shows the given channel (e.g. "Console" or "Logs"). */
+    void SetCurrentChannel(const std::string& channel);
+
+    /** @brief Shows only log entries at this level or above. */
+    void SetLevelFilter(spdlog::level::level_enum level);
+
     /**
      * @brief Removes all key-to-command bindings registered via the "bind" command.
      */

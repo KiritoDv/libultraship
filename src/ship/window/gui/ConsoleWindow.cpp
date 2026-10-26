@@ -743,6 +743,14 @@ std::string ConsoleWindow::GetCurrentChannel() {
     return mCurrentChannel;
 }
 
+void ConsoleWindow::SetCurrentChannel(const std::string& channel) {
+    mCurrentChannel = channel;
+}
+
+void ConsoleWindow::SetLevelFilter(spdlog::level::level_enum level) {
+    mLevelFilter = level;
+}
+
 void ConsoleWindow::ClearBindings() {
     mBindings.clear();
     mBindingToggle.clear();
