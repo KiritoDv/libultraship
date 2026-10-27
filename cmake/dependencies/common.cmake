@@ -280,9 +280,17 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(tinycc)
 if(NOT TARGET libtcc)
     if(ANDROID)
+        set(TCC_ANDROID_TARGET_DEFS "")
+        set(TCC_ANDROID_LINKER "/system/bin/linker64")
         if(CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
             set(TCC_ANDROID_TARGET ARM64)
             set(TCC_ANDROID_TRIPLET aarch64-linux-android)
+        elseif(CMAKE_ANDROID_ARCH_ABI STREQUAL "armeabi-v7a")
+            set(TCC_ANDROID_TARGET ARM)
+            set(TCC_ANDROID_TRIPLET arm-linux-androideabi)
+            set(TCC_ANDROID_LINKER "/system/bin/linker")
+            set(TCC_ANDROID_TARGET_DEFS
+                "#define TCC_TARGET_ARM 1\n#define TCC_ARM_EABI 1\n#define TCC_ARM_VFP 1\n")
         elseif(CMAKE_ANDROID_ARCH_ABI STREQUAL "x86_64")
             set(TCC_ANDROID_TARGET X86_64)
             set(TCC_ANDROID_TRIPLET x86_64-linux-android)
@@ -295,12 +303,13 @@ if(NOT TARGET libtcc)
         string(STRIP "${TCC_VERSION_STRING}" TCC_VERSION_STRING)
         file(WRITE "${tinycc_SOURCE_DIR}/config.h"
             "#define TCC_VERSION \"${TCC_VERSION_STRING}\"\n"
+            "${TCC_ANDROID_TARGET_DEFS}"
             "#define TARGETOS_ANDROID 1\n"
             "#define CONFIG_TCC_PREDEFS 1\n"
             "#define CONFIG_TCC_SYSINCLUDEPATHS \"{B}/include:{B}/sysinclude:{B}/sysinclude/${TCC_ANDROID_TRIPLET}\"\n"
-            "#define CONFIG_TCC_LIBPATHS \"{B}/lib\"\n"
+            "#define CONFIG_TCC_LIBPATHS \"{B}/lib/${CMAKE_ANDROID_ARCH_ABI}:{B}/lib\"\n"
             "#define CONFIG_TCC_CRTPREFIX \"{B}/lib\"\n"
-            "#define CONFIG_TCC_ELFINTERP \"/system/bin/linker64\"\n"
+            "#define CONFIG_TCC_ELFINTERP \"${TCC_ANDROID_LINKER}\"\n"
             "#define CONFIG_DWARF_VERSION 4\n"
             "#define CONFIG_NEW_DTAGS 1\n"
             "#define CONFIG_RUNMEM_RO 1\n"
@@ -489,6 +498,8 @@ if(NOT TARGET libtcc)
 
         if(TCC_ANDROID_TARGET STREQUAL "ARM64")
             set(TCC_ANDROID_RUNTIME lib-arm64.c armflush.c)
+        elseif(TCC_ANDROID_TARGET STREQUAL "ARM")
+            set(TCC_ANDROID_RUNTIME libtcc1.c armeabi.c armflush.c)
         else()
             set(TCC_ANDROID_RUNTIME libtcc1.c va_list.c)
         endif()

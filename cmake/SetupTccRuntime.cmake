@@ -56,10 +56,10 @@ function(lus_setup_tcc_runtime TARGET_NAME)
         add_custom_command(
             TARGET ${TARGET_NAME} POST_BUILD
             COMMENT "Staging TCC runtime headers and libs..."
-            COMMAND ${CMAKE_COMMAND} -E make_directory "${_stage}/lib/"
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${_stage}/lib/${CMAKE_ANDROID_ARCH_ABI}/"
             COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${tinycc_SOURCE_DIR}/include/" "${_stage}/include/"
             COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${CMAKE_SYSROOT}/usr/include/" "${_stage}/sysinclude/"
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:libtcc1>" "${_stage}/lib/libtcc1.a"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:libtcc1>" "${_stage}/lib/${CMAKE_ANDROID_ARCH_ABI}/libtcc1.a"
             VERBATIM
         )
 
