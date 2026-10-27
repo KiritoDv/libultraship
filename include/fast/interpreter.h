@@ -15,6 +15,7 @@
 #include <memory>
 #include <future>
 #include <unordered_set>
+#include <chrono>
 
 #include "fast/lus_gbi.h"
 #include "fast/types.h"
@@ -795,6 +796,32 @@ class Interpreter {
     // texture in the meantime (the blend reproduces the base), retrying on later frames.
     int mReplacementUploadBudget = 1; // max new replacement uploads per frame (0 = unlimited)
     int mFrameReplacementUploads = 0; // count uploaded so far this frame
+
+    // Spike diagnostics: shader compiles and texture imports since the previous Run, logged when
+    // the time between two Runs goes over the threshold.
+    struct SpikeStats {
+        int shaders = 0;
+        double shaderMs = 0;
+        int textures = 0;
+        double textureMs = 0;
+        double slowestTextureMs = 0;
+        std::string slowestTexture;
+    } mSpikeStats;
+    std::chrono::steady_clock::time_point mLastRunStart{};
+    void ReportSpike(double sinceLastRunMs, double renderMs);
+    // Frame breakdown averaged over a few seconds: whatever is not drawing, presenting or waiting on the
+    // swap chain is game logic and ImGui.
+    struct FrameTiming {
+        int frames = 0;
+        double frameMs = 0;
+        double maxFrameMs = 0;
+        double drawMs = 0;
+        double presentMs = 0;
+        double waitMs = 0;
+        uint64_t draws = 0;
+        uint64_t tris = 0;
+        std::chrono::steady_clock::time_point since{};
+    } mFrameTiming;
     bool mAllowReplacementDefer = false; // set by the draw path only for non-indexed bases
     bool mDeferredReplacementUpload = false; // set by ImportTexture when it deferred an upload
     bool mReplacementUploadedThisCall = false; // set by ImportTexture when it uploaded an HD this call

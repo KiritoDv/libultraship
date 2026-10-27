@@ -240,6 +240,8 @@ void GfxRenderingAPIDX11::Init() {
     mD3dCompile = (pD3DCompile)GetProcAddress(mCompilerModule, "D3DCompile");
 #endif
 
+    mShaderCache.Open("d3d11");
+
     // Create D3D11 mDevice
 
     mWindowBackend->CreateFactoryAndDevice(DEBUG_D3D, 11, this, CreateDeviceFunc);
@@ -292,7 +294,7 @@ void GfxRenderingAPIDX11::Init() {
     ZeroMemory(&vertex_buffer_desc, sizeof(D3D11_BUFFER_DESC));
 
     vertex_buffer_desc.Usage = D3D11_USAGE_DYNAMIC;
-    vertex_buffer_desc.ByteWidth = 256 * 32 * 3 * sizeof(float); // Same as buf_vbo size in gfx_pc
+    vertex_buffer_desc.ByteWidth = kVertexRingSize;
     vertex_buffer_desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
     vertex_buffer_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     vertex_buffer_desc.MiscFlags = 0;
@@ -437,21 +439,39 @@ void GfxRenderingAPIDX11::ClearShaderCache() {
     mShaderProgramPool.clear();
 }
 
+// D3DCompile costs tens of milliseconds per shader on weaker CPUs, so the bytecode is kept on disk.
+std::vector<char> GfxRenderingAPIDX11::CompileShader(const std::string& source, const char* entry, const char* target,
+                                                     UINT flags, const char* failMessage) {
+    const std::string flagsText = std::to_string(flags);
+    const uint64_t key = ShaderDiskCache::Hash({ source, entry, target, flagsText });
+    std::vector<char> code = mShaderCache.Load(key);
+    if (!code.empty()) {
+        return code;
+    }
+
+    ComPtr<ID3DBlob> blob, error_blob;
+    HRESULT hr = mD3dCompile(source.data(), source.size(), nullptr, nullptr, nullptr, entry, target, flags, 0,
+                             blob.GetAddressOf(), error_blob.GetAddressOf());
+    if (FAILED(hr)) {
+        char* err = (char*)error_blob->GetBufferPointer();
+        ReportShaderError(mWindowBackend->GetWindowHandle(), err);
+        throw Ship::HResultException(hr, failMessage);
+    }
+
+    const char* bytes = static_cast<const char*>(blob->GetBufferPointer());
+    code.assign(bytes, bytes + blob->GetBufferSize());
+    mShaderCache.Store(key, code.data(), code.size());
+    return code;
+}
+
 struct ShaderProgram* GfxRenderingAPIDX11::CreateAndLoadNewShader(uint64_t shader_id0, uint64_t shader_id1) {
     CCFeatures cc_features;
     gfx_cc_get_features(shader_id0, shader_id1, &cc_features);
 
-    char* buf;
-    size_t len, numFloats;
+    size_t numFloats;
 
     auto shader = gfx_direct3d_common_build_shader(numFloats, cc_features, false,
                                                    mCurrentFilterMode == FILTER_THREE_POINT);
-
-    buf = shader.data();
-    len = shader.size();
-
-    ComPtr<ID3DBlob> vs, ps;
-    ComPtr<ID3DBlob> error_blob;
 
 #if DEBUG_D3D
     UINT compile_flags = D3DCOMPILE_DEBUG;
@@ -459,30 +479,15 @@ struct ShaderProgram* GfxRenderingAPIDX11::CreateAndLoadNewShader(uint64_t shade
     UINT compile_flags = D3DCOMPILE_OPTIMIZATION_LEVEL2;
 #endif
 
-    HRESULT hr = mD3dCompile(buf, len, nullptr, nullptr, nullptr, "VSMain", "vs_4_0", compile_flags, 0,
-                             vs.GetAddressOf(), error_blob.GetAddressOf());
-
-    if (FAILED(hr)) {
-        char* err = (char*)error_blob->GetBufferPointer();
-        ReportShaderError(mWindowBackend->GetWindowHandle(), err);
-        throw Ship::HResultException(hr, "Vertex shader compilation failed");
-    }
-
-    hr = mD3dCompile(buf, len, nullptr, nullptr, nullptr, "PSMain", "ps_4_0", compile_flags, 0, ps.GetAddressOf(),
-                     error_blob.GetAddressOf());
-
-    if (FAILED(hr)) {
-        char* err = (char*)error_blob->GetBufferPointer();
-        ReportShaderError(mWindowBackend->GetWindowHandle(), err);
-        throw Ship::HResultException(hr, "Pixel shader compilation failed");
-    }
+    const std::vector<char> vs =
+        CompileShader(shader, "VSMain", "vs_4_0", compile_flags, "Vertex shader compilation failed");
+    const std::vector<char> ps =
+        CompileShader(shader, "PSMain", "ps_4_0", compile_flags, "Pixel shader compilation failed");
 
     struct ShaderProgramD3D11* prg = &mShaderProgramPool[std::make_pair(shader_id0, shader_id1)];
 
-    ThrowIfFailed(mDevice->CreateVertexShader(vs->GetBufferPointer(), vs->GetBufferSize(), nullptr,
-                                              prg->vertex_shader.GetAddressOf()));
-    ThrowIfFailed(mDevice->CreatePixelShader(ps->GetBufferPointer(), ps->GetBufferSize(), nullptr,
-                                             prg->pixel_shader.GetAddressOf()));
+    ThrowIfFailed(mDevice->CreateVertexShader(vs.data(), vs.size(), nullptr, prg->vertex_shader.GetAddressOf()));
+    ThrowIfFailed(mDevice->CreatePixelShader(ps.data(), ps.size(), nullptr, prg->pixel_shader.GetAddressOf()));
 
     // Input Layout
 
@@ -510,8 +515,7 @@ struct ShaderProgram* GfxRenderingAPIDX11::CreateAndLoadNewShader(uint64_t shade
     // (world position for point lighting is derived in the VS from the
     // object-space position and the modelview columns — no extra attribute)
 
-    ThrowIfFailed(mDevice->CreateInputLayout(ied, ied_index, vs->GetBufferPointer(), vs->GetBufferSize(),
-                                             prg->input_layout.GetAddressOf()));
+    ThrowIfFailed(mDevice->CreateInputLayout(ied, ied_index, vs.data(), vs.size(), prg->input_layout.GetAddressOf()));
 
     // Blend state
 
@@ -763,30 +767,32 @@ void GfxRenderingAPIDX11::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, siz
         mLastDepthMask = mCurrentDepthMask;
         mLastStrictDecal = mCurrentStrictDecal;
 
-        mDepthStencilState.Reset();
+        const uint32_t key = (mCurrentDepthTest ? 1 : 0) | (mCurrentDepthMask ? 2 : 0) |
+                             (mCurrentZmodeDecal ? 4 : 0) | (mCurrentStrictDecal ? 8 : 0);
+        Microsoft::WRL::ComPtr<ID3D11DepthStencilState>& state = mDepthStencilStates[key];
+        if (state == nullptr) {
+            D3D11_DEPTH_STENCIL_DESC depth_stencil_desc;
+            ZeroMemory(&depth_stencil_desc, sizeof(D3D11_DEPTH_STENCIL_DESC));
 
-        D3D11_DEPTH_STENCIL_DESC depth_stencil_desc;
-        ZeroMemory(&depth_stencil_desc, sizeof(D3D11_DEPTH_STENCIL_DESC));
+            depth_stencil_desc.DepthEnable = mCurrentDepthTest || mCurrentDepthMask;
+            depth_stencil_desc.DepthWriteMask =
+                mCurrentDepthMask ? D3D11_DEPTH_WRITE_MASK_ALL : D3D11_DEPTH_WRITE_MASK_ZERO;
+            depth_stencil_desc.DepthFunc =
+                mCurrentDepthTest ? (mCurrentZmodeDecal
+                                         ? (mCurrentStrictDecal ? D3D11_COMPARISON_EQUAL : D3D11_COMPARISON_LESS_EQUAL)
+                                         : D3D11_COMPARISON_LESS_EQUAL)
+                                  : D3D11_COMPARISON_ALWAYS;
+            depth_stencil_desc.StencilEnable = false;
 
-        depth_stencil_desc.DepthEnable = mCurrentDepthTest || mCurrentDepthMask;
-        depth_stencil_desc.DepthWriteMask =
-            mCurrentDepthMask ? D3D11_DEPTH_WRITE_MASK_ALL : D3D11_DEPTH_WRITE_MASK_ZERO;
-        depth_stencil_desc.DepthFunc =
-            mCurrentDepthTest
-                ? (mCurrentZmodeDecal ? (mCurrentStrictDecal ? D3D11_COMPARISON_EQUAL : D3D11_COMPARISON_LESS_EQUAL)
-                                      : D3D11_COMPARISON_LESS_EQUAL)
-                : D3D11_COMPARISON_ALWAYS;
-        depth_stencil_desc.StencilEnable = false;
-
-        ThrowIfFailed(mDevice->CreateDepthStencilState(&depth_stencil_desc, mDepthStencilState.GetAddressOf()));
+            ThrowIfFailed(mDevice->CreateDepthStencilState(&depth_stencil_desc, state.GetAddressOf()));
+        }
+        mDepthStencilState = state;
         mContext->OMSetDepthStencilState(mDepthStencilState.Get(), 0);
     }
 
     if (mLastZmodeDecal != mCurrentZmodeDecal || mLastCullKeepSign != mCurrentCullKeepSign) {
         mLastZmodeDecal = mCurrentZmodeDecal;
         mLastCullKeepSign = mCurrentCullKeepSign;
-
-        mRasterizerState.Reset();
 
         D3D11_RASTERIZER_DESC rasterizer_desc;
         ZeroMemory(&rasterizer_desc, sizeof(D3D11_RASTERIZER_DESC));
@@ -824,7 +830,14 @@ void GfxRenderingAPIDX11::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, siz
         rasterizer_desc.MultisampleEnable = false;
         rasterizer_desc.AntialiasedLineEnable = false;
 
-        ThrowIfFailed(mDevice->CreateRasterizerState(&rasterizer_desc, mRasterizerState.GetAddressOf()));
+        uint32_t depth_bias_bits;
+        memcpy(&depth_bias_bits, &rasterizer_desc.SlopeScaledDepthBias, sizeof(depth_bias_bits));
+        const uint64_t key = ((uint64_t)depth_bias_bits << 8) | (uint64_t)rasterizer_desc.CullMode;
+        Microsoft::WRL::ComPtr<ID3D11RasterizerState>& state = mRasterizerStates[key];
+        if (state == nullptr) {
+            ThrowIfFailed(mDevice->CreateRasterizerState(&rasterizer_desc, state.GetAddressOf()));
+        }
+        mRasterizerState = state;
         mContext->RSSetState(mRasterizerState.Get());
     }
 
@@ -848,12 +861,11 @@ void GfxRenderingAPIDX11::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, siz
                     mPerDrawCbData.mTextures[i].linear_filtering = mTextures[mCurrentTextureIds[i]].linear_filtering;
                     textures_changed = true;
                 }
-
-                if (mLastSamplerStates[i].Get() != mTextures[mCurrentTextureIds[i]].sampler_state.Get()) {
-                    mLastSamplerStates[i] = mTextures[mCurrentTextureIds[i]].sampler_state.Get();
-                }
             }
-            mContext->PSSetSamplers(i, 1, mTextures[mCurrentTextureIds[i]].sampler_state.GetAddressOf());
+            if (mLastSamplerStates[i].Get() != mTextures[mCurrentTextureIds[i]].sampler_state.Get()) {
+                mLastSamplerStates[i] = mTextures[mCurrentTextureIds[i]].sampler_state.Get();
+                mContext->PSSetSamplers(i, 1, mTextures[mCurrentTextureIds[i]].sampler_state.GetAddressOf());
+            }
         }
     }
 
@@ -912,16 +924,26 @@ void GfxRenderingAPIDX11::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, siz
         mLodMaxDirty = false;
     }
 
-    // Set vertex buffer data
-
-    D3D11_MAPPED_SUBRESOURCE ms;
-    ZeroMemory(&ms, sizeof(D3D11_MAPPED_SUBRESOURCE));
-    mContext->Map(mVertexBuffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &ms);
-    memcpy(ms.pData, buf_vbo, buf_vbo_len * sizeof(float));
-    mContext->Unmap(mVertexBuffer.Get(), 0);
+    // Set vertex buffer data: append to the ring and only discard it when it wraps, so the driver does not
+    // rename the whole buffer for every draw.
 
     uint32_t stride = mShaderProgram->numFloats * sizeof(float);
     uint32_t offset = 0;
+
+    const size_t bytes = buf_vbo_len * sizeof(float);
+    size_t start = (mVertexRingOffset + stride - 1) / stride * stride;
+    D3D11_MAP map_type = D3D11_MAP_WRITE_NO_OVERWRITE;
+    if (start + bytes > kVertexRingSize) {
+        start = 0;
+        map_type = D3D11_MAP_WRITE_DISCARD;
+    }
+
+    D3D11_MAPPED_SUBRESOURCE ms;
+    ZeroMemory(&ms, sizeof(D3D11_MAPPED_SUBRESOURCE));
+    mContext->Map(mVertexBuffer.Get(), 0, map_type, 0, &ms);
+    memcpy(static_cast<char*>(ms.pData) + start, buf_vbo, bytes);
+    mContext->Unmap(mVertexBuffer.Get(), 0);
+    mVertexRingOffset = start + bytes;
 
     if (mLastVertexBufferStride != stride) {
         mLastVertexBufferStride = stride;
@@ -945,7 +967,7 @@ void GfxRenderingAPIDX11::DrawTriangles(float buf_vbo[], size_t buf_vbo_len, siz
         mContext->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     }
 
-    mContext->Draw(buf_vbo_num_tris * 3, 0);
+    mContext->Draw(buf_vbo_num_tris * 3, static_cast<UINT>(start / stride));
 }
 
 void GfxRenderingAPIDX11::OnResize() {

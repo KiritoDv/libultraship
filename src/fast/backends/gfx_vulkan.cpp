@@ -294,7 +294,16 @@ static std::string BuildVulkanShader(const CCFeatures& cc_features, bool vertex,
     return result;
 }
 
-static std::vector<uint32_t> CompileGlslToSpirv(const std::string& source, bool vertex) {
+static std::vector<uint32_t> CompileGlslToSpirv(const ShaderDiskCache& cache, const std::string& source, bool vertex) {
+    // The key names the compile options below; change it whenever they change.
+    const uint64_t key = ShaderDiskCache::Hash({ source, vertex ? "vert" : "frag", "vulkan1.1-performance" });
+    const std::vector<char> cached = cache.Load(key);
+    if (!cached.empty() && cached.size() % sizeof(uint32_t) == 0) {
+        std::vector<uint32_t> spirv(cached.size() / sizeof(uint32_t));
+        memcpy(spirv.data(), cached.data(), cached.size());
+        return spirv;
+    }
+
     static shaderc::Compiler compiler;
     shaderc::CompileOptions options;
     options.SetTargetEnvironment(shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_1);
@@ -312,7 +321,9 @@ static std::vector<uint32_t> CompileGlslToSpirv(const std::string& source, bool 
         }
         abort();
     }
-    return { result.cbegin(), result.cend() };
+    std::vector<uint32_t> spirv(result.cbegin(), result.cend());
+    cache.Store(key, spirv.data(), spirv.size() * sizeof(uint32_t));
+    return spirv;
 }
 
 // MARK: - Helpers
@@ -892,6 +903,7 @@ bool GfxRenderingAPIVK::VulkanInit(SDL_Window* window) {
         return false;
     }
     vkGetDeviceQueue(mDevice, mQueueFamily, 0, &mQueue);
+    CreatePipelineCache();
 
     // Descriptor set layouts + pipeline layout
     {
@@ -1199,8 +1211,8 @@ ShaderProgram* GfxRenderingAPIVK::CreateAndLoadNewShader(uint64_t shaderId0, uin
     std::string vsSource = BuildVulkanShader(cc_features, true, mCurrentFilterMode == FILTER_THREE_POINT);
     std::string fsSource = BuildVulkanShader(cc_features, false, mCurrentFilterMode == FILTER_THREE_POINT);
 
-    std::vector<uint32_t> vsSpirv = CompileGlslToSpirv(vsSource, true);
-    std::vector<uint32_t> fsSpirv = CompileGlslToSpirv(fsSource, false);
+    std::vector<uint32_t> vsSpirv = CompileGlslToSpirv(mShaderCache, vsSource, true);
+    std::vector<uint32_t> fsSpirv = CompileGlslToSpirv(mShaderCache, fsSource, false);
 
     ShaderProgramVK* prg = &mShaderProgramPool[std::make_pair(shaderId0, shaderId1)];
     prg->shader_id0 = shaderId0;
@@ -1570,11 +1582,12 @@ VkPipeline GfxRenderingAPIVK::GetPipelineForState(ShaderProgramVK* prg, Framebuf
     pci.subpass = 0;
 
     VkPipeline pipeline = VK_NULL_HANDLE;
-    VkResult res = vkCreateGraphicsPipelines(mDevice, VK_NULL_HANDLE, 1, &pci, nullptr, &pipeline);
+    VkResult res = vkCreateGraphicsPipelines(mDevice, mPipelineCache, 1, &pci, nullptr, &pipeline);
     if (res != VK_SUCCESS) {
         SPDLOG_ERROR("Vulkan: pipeline creation failed ({}) for shader {:x}/{:x}", (int)res, prg->shader_id0,
                      prg->shader_id1);
     }
+    mPipelineCacheDirty = true;
     prg->pipelines[key] = pipeline;
     return pipeline;
 }
@@ -2275,9 +2288,51 @@ GfxRenderingAPIVK::GetPixelDepth(int fbId, const std::set<std::pair<float, float
     return res;
 }
 
+// The driver's own pipeline compiles are kept too, under a key for this exact device and driver.
+void GfxRenderingAPIVK::CreatePipelineCache() {
+    mShaderCache.Open("vulkan");
+
+    const std::string_view uuid(reinterpret_cast<const char*>(mDeviceProps.pipelineCacheUUID), VK_UUID_SIZE);
+    const std::string device = std::to_string(mDeviceProps.vendorID) + ":" + std::to_string(mDeviceProps.deviceID) +
+                               ":" + std::to_string(mDeviceProps.driverVersion);
+    mPipelineCacheKey = ShaderDiskCache::Hash({ "pipelines", uuid, device });
+    const std::vector<char> data = mShaderCache.Load(mPipelineCacheKey);
+
+    VkPipelineCacheCreateInfo pcci = { VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO };
+    pcci.initialDataSize = data.size();
+    pcci.pInitialData = data.empty() ? nullptr : data.data();
+    if (vkCreatePipelineCache(mDevice, &pcci, nullptr, &mPipelineCache) != VK_SUCCESS) {
+        // Drivers reject data they do not recognise; start empty instead.
+        pcci.initialDataSize = 0;
+        pcci.pInitialData = nullptr;
+        VK_CHECK(vkCreatePipelineCache(mDevice, &pcci, nullptr, &mPipelineCache));
+    }
+}
+
+void GfxRenderingAPIVK::SavePipelineCache() {
+    if (mPipelineCache == VK_NULL_HANDLE || !mShaderCache.IsOpen()) {
+        return;
+    }
+    size_t size = 0;
+    if (vkGetPipelineCacheData(mDevice, mPipelineCache, &size, nullptr) != VK_SUCCESS || size == 0) {
+        return;
+    }
+    std::vector<char> data(size);
+    if (vkGetPipelineCacheData(mDevice, mPipelineCache, &size, data.data()) == VK_SUCCESS) {
+        mShaderCache.Store(mPipelineCacheKey, data.data(), size);
+    }
+}
+
 void GfxRenderingAPIVK::EndFrame() {
     if (!mFrameActive) {
         return;
+    }
+    // Save a couple of seconds after the last new pipeline, so a level load writes the cache once.
+    if (mPipelineCacheDirty) {
+        mPipelineCacheDirty = false;
+        mPipelineCacheSaveCountdown = 120;
+    } else if (mPipelineCacheSaveCountdown > 0 && --mPipelineCacheSaveCountdown == 0) {
+        SavePipelineCache();
     }
     FrameSlot& slot = mFrames[mFrameSlot];
 

@@ -7,7 +7,10 @@
 #include "../interpreter.h"
 #include <cstdint>
 #include <string>
+#include <unordered_map>
+#include <vector>
 #include "gfx_rendering_api.h"
+#include "gfx_shader_cache.h"
 #include "d3d11.h"
 #include "d3dcompiler.h"
 
@@ -157,17 +160,24 @@ class GfxRenderingAPIDX11 final : public GfxRenderingAPI {
   private:
     void CreateDepthStencilObjects(uint32_t width, uint32_t height, uint32_t msaa_count, ID3D11DepthStencilView** view,
                                    ID3D11ShaderResourceView** srv);
+    std::vector<char> CompileShader(const std::string& source, const char* entry, const char* target, UINT flags,
+                                    const char* failMessage);
 
     HMODULE mDX11Module;
 
     HMODULE mCompilerModule;
     pD3DCompile mD3dCompile;
+    ShaderDiskCache mShaderCache;
 
     uint32_t mMsaaNumQualityLevels[D3D11_MAX_MULTISAMPLE_SAMPLE_COUNT];
 
     Microsoft::WRL::ComPtr<ID3D11RasterizerState> mRasterizerState;
     Microsoft::WRL::ComPtr<ID3D11DepthStencilState> mDepthStencilState;
+    std::unordered_map<uint64_t, Microsoft::WRL::ComPtr<ID3D11RasterizerState>> mRasterizerStates;
+    std::unordered_map<uint32_t, Microsoft::WRL::ComPtr<ID3D11DepthStencilState>> mDepthStencilStates;
     Microsoft::WRL::ComPtr<ID3D11Buffer> mVertexBuffer;
+    static constexpr size_t kVertexRingSize = 4 * 1024 * 1024;
+    size_t mVertexRingOffset = kVertexRingSize; // starts full so the first map discards
     Microsoft::WRL::ComPtr<ID3D11Buffer> mPerFrameCb;
     Microsoft::WRL::ComPtr<ID3D11Buffer> mPerDrawCb;
     Microsoft::WRL::ComPtr<ID3D11Buffer> mPerPrimDepthCb;

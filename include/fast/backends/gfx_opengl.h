@@ -3,6 +3,7 @@
 
 #include <memory>
 #include "gfx_rendering_api.h"
+#include "gfx_shader_cache.h"
 #include "../interpreter.h"
 
 namespace Ship {
@@ -146,6 +147,14 @@ class GfxRenderingAPIOGL final : public GfxRenderingAPI {
     void SetUniforms(ShaderProgram* prg) const;
     std::string BuildFsShader(const CCFeatures& cc_features);
     void SetPerDrawUniforms();
+    GLuint CompileProgram(const std::string& vs_buf, const std::string& fs_buf, uint64_t shader_id0,
+                          uint64_t shader_id1);
+    GLuint LoadProgramBinary(uint64_t key);
+    void StoreProgramBinary(uint64_t key, GLuint program);
+
+    ShaderDiskCache mShaderCache;
+    bool mProgramBinaries = false;
+    std::string mDriverIdentity;
 
     std::shared_ptr<Ship::ConsoleVariable> mConsoleVariable;
     std::shared_ptr<Ship::ResourceManager> mResourceManager;

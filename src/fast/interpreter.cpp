@@ -145,6 +145,8 @@ void Interpreter::Flush() {
         mRapi->SetTransformUniforms(mTransform);
         mRapi->SetCustomUniforms(mCustomUniforms);
         mRapi->DrawTriangles(mBufVbo, mBufVboLen, mBufVboNumTris);
+        mFrameTiming.draws++;
+        mFrameTiming.tris += mBufVboNumTris;
         mBufVboLen = 0;
         mBufVboNumTris = 0;
         // Palette slots are assigned per batch; the next batch starts empty
@@ -313,7 +315,11 @@ ShaderProgram* Interpreter::LookupOrCreateShaderProgram(uint64_t id0, uint64_t i
     ShaderProgram* prg = mRapi->LookupShader(id0, id1);
     if (prg == nullptr) {
         mRapi->UnloadShader(mRenderingState.mShaderProgram);
+        const auto start = std::chrono::steady_clock::now();
         prg = mRapi->CreateAndLoadNewShader(id0, id1);
+        mSpikeStats.shaders++;
+        mSpikeStats.shaderMs +=
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
         mRenderingState.mShaderProgram = prg;
     }
     return prg;
@@ -2070,6 +2076,22 @@ void Interpreter::ImportTexture(int i, int tile, bool importReplacement) {
     if (TextureCacheLookup(i, key)) {
         return;
     }
+
+    struct MissTimer {
+        SpikeStats& stats;
+        const RawTexMetadata* metadata;
+        std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+        ~MissTimer() {
+            const double ms =
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+            stats.textures++;
+            stats.textureMs += ms;
+            if (ms > stats.slowestTextureMs) {
+                stats.slowestTextureMs = ms;
+                stats.slowestTexture = metadata->resource != nullptr ? metadata->resource->GetInitData()->Path : "";
+            }
+        }
+    } missTimer{ mSpikeStats, metadata };
 
     // Past the lookup on a miss means this replacement will upload now — count it
     // against this frame's budget so further first-time replacements are deferred.
@@ -6660,6 +6682,11 @@ void Interpreter::RunGuiOnly() {
 
 void Interpreter::Run(Gfx* commands, const std::unordered_map<Mtx*, MtxF>& mtx_replacements,
                       const std::unordered_map<Gfx*, Gfx*>& dl_replacements) {
+    const auto runStart = std::chrono::steady_clock::now();
+    const double sinceLastRunMs = mLastRunStart.time_since_epoch().count() == 0
+                                      ? 0.0
+                                      : std::chrono::duration<double, std::milli>(runStart - mLastRunStart).count();
+    mLastRunStart = runStart;
     SpReset();
 
     // Cache the RGB-dither toggle once per frame; the per-draw uniform block reads
@@ -6778,13 +6805,55 @@ void Interpreter::Run(Gfx* commands, const std::unordered_map<Mtx*, MtxF>& mtx_r
 
         assert(0 && "active framebuffer was never reset back to original");
     }
+
+    ReportSpike(sinceLastRunMs,
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - runStart).count());
+}
+
+// Logs what a slow frame spent its time on: the gap since the previous Run covers the game logic, the
+// previous present and this Run's draws; the stats cover everything since the previous report.
+void Interpreter::ReportSpike(double sinceLastRunMs, double renderMs) {
+    constexpr double kSpikeMs = 50.0;
+    if (sinceLastRunMs > kSpikeMs || renderMs > kSpikeMs) {
+        SPDLOG_WARN("Frame spike: {:.1f} ms since last frame, {:.1f} ms drawing; {} shader compile(s) {:.1f} ms, {} "
+                    "texture import(s) {:.1f} ms (slowest {:.1f} ms {})",
+                    sinceLastRunMs, renderMs, mSpikeStats.shaders, mSpikeStats.shaderMs, mSpikeStats.textures,
+                    mSpikeStats.textureMs, mSpikeStats.slowestTextureMs, mSpikeStats.slowestTexture);
+    }
+    mSpikeStats = {};
+
+    const auto now = std::chrono::steady_clock::now();
+    if (mFrameTiming.since.time_since_epoch().count() == 0) {
+        mFrameTiming.since = now;
+    }
+    mFrameTiming.frames++;
+    mFrameTiming.frameMs += sinceLastRunMs;
+    mFrameTiming.maxFrameMs = std::max(mFrameTiming.maxFrameMs, sinceLastRunMs);
+    mFrameTiming.drawMs += renderMs;
+    if (now - mFrameTiming.since >= std::chrono::seconds(5)) {
+        const double n = mFrameTiming.frames;
+        const double other =
+            (mFrameTiming.frameMs - mFrameTiming.drawMs - mFrameTiming.presentMs - mFrameTiming.waitMs) / n;
+        SPDLOG_WARN("Frame timing: {} frames, avg {:.1f} ms (max {:.1f}); draw {:.1f}, present {:.1f}, swap wait "
+                    "{:.1f}, logic+gui {:.1f}; {:.0f} draw calls, {:.0f} tris per frame; target {} fps",
+                    mFrameTiming.frames, mFrameTiming.frameMs / n, mFrameTiming.maxFrameMs, mFrameTiming.drawMs / n,
+                    mFrameTiming.presentMs / n, mFrameTiming.waitMs / n, other, mFrameTiming.draws / n,
+                    mFrameTiming.tris / n, mWapi->GetTargetFps());
+        mFrameTiming = {};
+        mFrameTiming.since = now;
+    }
 }
 
 void Interpreter::EndFrame() {
+    const auto t0 = std::chrono::steady_clock::now();
     mRapi->EndFrame();
     mWapi->SwapBuffersBegin();
     mRapi->FinishRender();
+    const auto t1 = std::chrono::steady_clock::now();
     mWapi->SwapBuffersEnd();
+    const auto t2 = std::chrono::steady_clock::now();
+    mFrameTiming.presentMs += std::chrono::duration<double, std::milli>(t1 - t0).count();
+    mFrameTiming.waitMs += std::chrono::duration<double, std::milli>(t2 - t1).count();
 }
 
 void gfx_set_target_ucode(UcodeHandlers ucode) {

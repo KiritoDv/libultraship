@@ -12,6 +12,7 @@
 #ifdef ENABLE_VULKAN
 
 #include "gfx_rendering_api.h"
+#include "gfx_shader_cache.h"
 #include "../interpreter.h"
 
 #include <vulkan/vulkan.h>
@@ -310,6 +311,14 @@ class GfxRenderingAPIVK final : public GfxRenderingAPI {
     VkDescriptorSetLayout mSet0Layout = VK_NULL_HANDLE; // 4 dynamic UBOs
     VkDescriptorSetLayout mSet1Layout = VK_NULL_HANDLE; // 7 combined image samplers
     VkPipelineLayout mPipelineLayout = VK_NULL_HANDLE;
+
+    ShaderDiskCache mShaderCache;
+    VkPipelineCache mPipelineCache = VK_NULL_HANDLE;
+    uint64_t mPipelineCacheKey = 0;
+    bool mPipelineCacheDirty = false;
+    uint32_t mPipelineCacheSaveCountdown = 0;
+    void CreatePipelineCache();
+    void SavePipelineCache();
 
     std::map<uint32_t, VkRenderPass> mRenderPassCache; // key: msaa | (hasDepth << 8)
     std::map<uint32_t, VkSampler> mSamplerCache;       // key: linear | cms<<1 | cmt<<9

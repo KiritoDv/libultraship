@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
 
 #include <map>
 #include <unordered_map>
@@ -532,11 +533,8 @@ void GfxRenderingAPIOGL::ClearShaderCache() {
     mShaderProgramPool.clear();
 }
 
-ShaderProgram* GfxRenderingAPIOGL::CreateAndLoadNewShader(uint64_t shader_id0, uint64_t shader_id1) {
-    CCFeatures cc_features;
-    gfx_cc_get_features(shader_id0, shader_id1, &cc_features);
-    const auto fs_buf = BuildFsShader(cc_features);
-    const auto vs_buf = BuildVsShader(cc_features);
+GLuint GfxRenderingAPIOGL::CompileProgram(const std::string& vs_buf, const std::string& fs_buf, uint64_t shader_id0,
+                                          uint64_t shader_id1) {
     const GLchar* sources[2] = { vs_buf.data(), fs_buf.data() };
     const GLint lengths[2] = { (GLint)vs_buf.size(), (GLint)fs_buf.size() };
     GLint success;
@@ -572,6 +570,9 @@ ShaderProgram* GfxRenderingAPIOGL::CreateAndLoadNewShader(uint64_t shader_id0, u
     GLuint shader_program = glCreateProgram();
     glAttachShader(shader_program, vertex_shader);
     glAttachShader(shader_program, fragment_shader);
+    if (mProgramBinaries) {
+        glProgramParameteri(shader_program, GL_PROGRAM_BINARY_RETRIEVABLE_HINT, GL_TRUE);
+    }
     glLinkProgram(shader_program);
 
     glGetProgramiv(shader_program, GL_LINK_STATUS, &success);
@@ -583,6 +584,62 @@ ShaderProgram* GfxRenderingAPIOGL::CreateAndLoadNewShader(uint64_t shader_id0, u
         SPDLOG_ERROR("Shader program link failed (shader_id0={:#x}, shader_id1={:#x}): {}", shader_id0, shader_id1,
                      error_log.c_str());
         abort();
+    }
+    return shader_program;
+}
+
+// Program binaries belong to one driver build, which is why the key covers the driver identity. A
+// driver can still turn one down, so a failed load just means compiling from source.
+GLuint GfxRenderingAPIOGL::LoadProgramBinary(uint64_t key) {
+    if (!mProgramBinaries) {
+        return 0;
+    }
+    const std::vector<char> blob = mShaderCache.Load(key);
+    if (blob.size() <= sizeof(GLenum)) {
+        return 0;
+    }
+    GLenum format;
+    memcpy(&format, blob.data(), sizeof(format));
+
+    GLuint program = glCreateProgram();
+    glProgramBinary(program, format, blob.data() + sizeof(format), (GLsizei)(blob.size() - sizeof(format)));
+    GLint success = GL_FALSE;
+    glGetProgramiv(program, GL_LINK_STATUS, &success);
+    if (!success) {
+        glDeleteProgram(program);
+        while (glGetError() != GL_NO_ERROR) {
+        }
+        return 0;
+    }
+    return program;
+}
+
+void GfxRenderingAPIOGL::StoreProgramBinary(uint64_t key, GLuint program) {
+    if (!mProgramBinaries) {
+        return;
+    }
+    GLint length = 0;
+    glGetProgramiv(program, GL_PROGRAM_BINARY_LENGTH, &length);
+    if (length <= 0) {
+        return;
+    }
+    std::vector<char> blob(sizeof(GLenum) + (size_t)length);
+    GLenum format = 0;
+    glGetProgramBinary(program, length, &length, &format, blob.data() + sizeof(format));
+    memcpy(blob.data(), &format, sizeof(format));
+    mShaderCache.Store(key, blob.data(), sizeof(format) + (size_t)length);
+}
+
+ShaderProgram* GfxRenderingAPIOGL::CreateAndLoadNewShader(uint64_t shader_id0, uint64_t shader_id1) {
+    CCFeatures cc_features;
+    gfx_cc_get_features(shader_id0, shader_id1, &cc_features);
+    const auto fs_buf = BuildFsShader(cc_features);
+    const auto vs_buf = BuildVsShader(cc_features);
+    const uint64_t cacheKey = ShaderDiskCache::Hash({ mDriverIdentity, vs_buf, fs_buf });
+    GLuint shader_program = LoadProgramBinary(cacheKey);
+    if (shader_program == 0) {
+        shader_program = CompileProgram(vs_buf, fs_buf, shader_id0, shader_id1);
+        StoreProgramBinary(cacheKey, shader_program);
     }
 
     size_t cnt = 0;
@@ -965,6 +1022,25 @@ void GfxRenderingAPIOGL::Init() {
     mPixelDepthRbSize = 1;
 
     glGetIntegerv(GL_MAX_SAMPLES, &mMaxMsaaLevel);
+
+    GLint binaryFormats = 0;
+    glGetIntegerv(GL_NUM_PROGRAM_BINARY_FORMATS, &binaryFormats);
+    while (glGetError() != GL_NO_ERROR) {
+    }
+    mProgramBinaries = binaryFormats > 0;
+#ifdef __glew_h__
+    mProgramBinaries =
+        mProgramBinaries && glProgramBinary != nullptr && glGetProgramBinary != nullptr && glProgramParameteri != nullptr;
+#endif
+    if (mProgramBinaries) {
+        mShaderCache.Open("opengl");
+        mProgramBinaries = mShaderCache.IsOpen();
+        for (GLenum name : { GL_VENDOR, GL_RENDERER, GL_VERSION }) {
+            const GLubyte* value = glGetString(name);
+            mDriverIdentity += value != nullptr ? reinterpret_cast<const char*>(value) : "";
+            mDriverIdentity += '\n';
+        }
+    }
 
     sOGLResourceManager = mResourceManager;
 }
